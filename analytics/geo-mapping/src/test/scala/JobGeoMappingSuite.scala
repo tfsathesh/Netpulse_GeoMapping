@@ -246,8 +246,8 @@ class JobGeoMappingSuite extends FunSuite with DataFrameSuiteBase {
     actualDf = actualDf.sort("Name")
 
     val expectedData = Seq(
-      Row("User1", 53.350, -3.141, "120#125#130"),
-      Row("User2", 53.373, -3.143, "213#220#230")
+      Row("User1", 53.350, -3.141, "120,125,130"),
+      Row("User2", 53.373, -3.143, "213,220,230")
     )
 
     val expectedDF = spark.createDataFrame(
@@ -279,8 +279,8 @@ class JobGeoMappingSuite extends FunSuite with DataFrameSuiteBase {
     actualDf = actualDf.sort("Name")
 
     val expectedData = Seq(
-      Row("User1", 53.350, -3.141, "120#125#130"),
-      Row("User2", 53.373, -3.143, "213#220#230")
+      Row("User1", 53.350, -3.141, "120,125,130"),
+      Row("User2", 53.373, -3.143, "213,220,230")
     )
 
     val expectedDF = spark.createDataFrame(

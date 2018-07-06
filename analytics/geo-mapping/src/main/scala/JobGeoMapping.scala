@@ -81,8 +81,7 @@ object JobGeoMapping {
       * @return
       */
     def aggregateLabelsPerPoint(df: DataFrame, groupByCols: Seq[String], aggegateCols: Seq[String]):  DataFrame = {
-
-        val aggCols = aggegateCols.map(colName => expr(s"""concat_ws("#",collect_list($colName))""").alias(colName))
+        val aggCols = aggegateCols.map(colName => expr(s"""concat_ws(",",collect_list($colName))""").alias(colName))
         val aggregatedDf =  df
         .groupBy (groupByCols.head, groupByCols.tail: _*)
         .agg(aggCols.head, aggCols.tail: _*)
@@ -193,7 +192,7 @@ object JobGeoMapping {
 
             val resultDf = if(aggregateLabels) {
               val tmpDf = aggregateLabelsPerPoint(pointsLabeledDf, joinCols, metadataToFilter)
-              countLabelsPerPoint(tmpDf, metadataToFilter(0), "#", s"$metadataToFilter(0)" + "Count")
+              countLabelsPerPoint(tmpDf, metadataToFilter(0), ",", s"$metadataToFilter(0)" + "Count")
             } else {
               pointsLabeledDf
             }
