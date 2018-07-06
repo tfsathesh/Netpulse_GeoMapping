@@ -1,0 +1,7 @@
+{
+"type": "FeatureCollection",
+"name": "beacon",
+"features": [{
+"type": "Feature",
+"properties": {"UID": "", "Mobile_RadioManager": "", "RadioManager": "", "Mobile_Optimiser": "", "AREA_OP": "", "Optimiser": "", "Field12": "", "REGION": "", "POLYGON": "", "OPERATOR": "", "CHUNK": "", "AREA_OWNER": "", "name": "", "Postdist": "", "Postarea": ""},"geometry": {"type": "Polygon", "coordinates": [[[-9.47398082041143041, 62.28397773008651228], [3.1048807195708541, 62.34815559508641769], [3.3615921795704935, 49.67302725760426796], [-9.15309149541188205, 49.44840473010458481], [-9.47398082041143041, 62.28397773008651228]]]}}]
+}

@@ -42,7 +42,7 @@ object CoordinatesUtils {
         var dfPartial = spark.read.format("magellan")
 
         if (path.endsWith("json"))
-            dfPartial = dfPartial.option("type", "geojson") 
+            dfPartial = dfPartial.option("type", "geojson")
 
         if (!index.isEmpty)
               dfPartial
