@@ -1,7 +1,8 @@
+import JobGeoMapping.getSparkSession
 import com.holdenkarau.spark.testing._
 import org.scalatest.FunSuite
-import org.apache.spark.sql.types._
-import org.apache.spark.sql.{Row, SparkSession}
+import org.apache.spark.sql.types.{StructField, _}
+import org.apache.spark.sql.{DataFrame, Row, SparkSession}
 
 class JobGeoMappingSuite extends FunSuite with DataFrameSuiteBase {
 
@@ -10,25 +11,7 @@ class JobGeoMappingSuite extends FunSuite with DataFrameSuiteBase {
 
   import spark.implicits._
 
-  test("Magellan Index input validation") {
-    info("Default case")
-    var inputString = "12,5,-1,19"
-    var expectedResult = Seq(Some(10), Some(5), None, Some(15))
-    var result = JobGeoMapping.validateMagellanIndex(inputString, ",")
-    assert(result === expectedResult)
-
-    info("Different separator case")
-    inputString = "0#32#-10#6"
-    expectedResult = Seq(None, Some(30), None, Some(5))
-    result = JobGeoMapping.validateMagellanIndex(inputString, "#")
-    assert(result === expectedResult)
-
-    info("Exception case")
-    inputString = "0,32,-10,6,A,"
-    assertThrows[NumberFormatException] {
-      result = JobGeoMapping.validateMagellanIndex(inputString, ",")
-    }
-  }
+  //TODO: Move below test helper functions into a separate file
 
   /**
     *
@@ -80,6 +63,27 @@ class JobGeoMappingSuite extends FunSuite with DataFrameSuiteBase {
     }
 
     /*TODO: Do we need to check schema and its data type?*/
+  }
+
+  //---------- TESTS -----------
+  test("Magellan Index input validation") {
+    info("Default case")
+    var inputString = "12,5,-1,19"
+    var expectedResult = Seq(Some(10), Some(5), None, Some(15))
+    var result = JobGeoMapping.validateMagellanIndex(inputString, ",")
+    assert(result === expectedResult)
+
+    // Different separator case
+    inputString = "0#32#-10#6"
+    expectedResult = Seq(None, Some(30), None, Some(5))
+    result = JobGeoMapping.validateMagellanIndex(inputString, "#")
+    assert(result === expectedResult)
+
+    // Exception case
+    inputString = "0,32,-10,6,A,"
+    assertThrows[NumberFormatException] {
+      result = JobGeoMapping.validateMagellanIndex(inputString, ",")
+    }
   }
 
   test("loadMultiPolygons test 1") {
@@ -225,22 +229,34 @@ class JobGeoMappingSuite extends FunSuite with DataFrameSuiteBase {
     }
   }
 
-  ignore("aggregateLabelsPerPoint test 1") {
+  test("aggregateLabelsPerPoint test 1") {
     //aggregateLabelsPerPoint(df: DataFrame, groupByCols: Seq[String], aggegateCols: Seq[String]):  DataFrame
 
-    val dfIn11 = Seq(
-      ("User1", 53.350, -3.141, "120"),
-      ("User2", 53.373, -3.143, "213"),
-      ("User1", 53.350, -3.141, "125"),
-      ("User2", 53.373, -3.143, "220"),
-      ("User1", 53.350, -3.141, "130"),
-      ("User2", 53.373, -3.143, "230")
-    ).toDF("Name", "Lat", "Lng", "Label1")
+    val inputSeq = Seq(
+      Row("User1", 53.350, -3.141, "120"),
+      Row("User2", 53.373, -3.143, "213"),
+      Row("User1", 53.350, -3.141, "125"),
+      Row("User2", 53.373, -3.143, "220"),
+      Row("User1", 53.350, -3.141, "130"),
+      Row("User2", 53.373, -3.143, "230")
+    )
+
+    val schema = List(
+      StructField("Name", StringType,false),
+      StructField("Lat", DoubleType,false),
+      StructField("Lng", DoubleType,false),
+      StructField("Label1", StringType,false)
+    )
+
+    val dfIn1 = spark.createDataFrame(
+      spark.sparkContext.parallelize(inputSeq),
+      StructType(schema)
+    )
 
     var groupByCols = Seq("Name", "Lat", "Lng")
     var aggegateCols = Seq("Label1")
 
-    var actualDf = JobGeoMapping.aggregateLabelsPerPoint(dfIn11, groupByCols, aggegateCols)
+    var actualDf = JobGeoMapping.aggregateLabelsPerPoint(dfIn1, groupByCols, aggegateCols)
 
     // Sort to keep the order (needed for dataframe comparision)
     actualDf = actualDf.sort("Name")
@@ -252,45 +268,99 @@ class JobGeoMappingSuite extends FunSuite with DataFrameSuiteBase {
 
     val expectedDF = spark.createDataFrame(
       spark.sparkContext.parallelize(expectedData),
-      dfIn11.schema
+      StructType(schema)
     ).sort("Name")
 
     assertDataFrameApproximateEquals(expectedDF, actualDf, 0.005)
   }
 
-  ignore("aggregateLabelsPerPoint test 2") {
+  test("aggregateLabelsPerPoint test 2") {
     //aggregateLabelsPerPoint(df: DataFrame, groupByCols: Seq[String], aggegateCols: Seq[String]):  DataFrame
 
-    val dfIn11 = Seq(
-      ("User1", 53.350, -3.141, "120", "Name 1"),
-      ("User2", 53.373, -3.143, "213", "Name 2"),
-      ("User1", 53.350, -3.141, "125", "Name 3"),
-      ("User2", 53.373, -3.143, "220", "Name 2"),
-      ("User1", 53.350, -3.141, "130", "Name 1"),
-      ("User2", 53.373, -3.143, "230", "Name 3")
-    ).toDF("Name", "Lat", "Lng", "Label1", "Label2")
+    val inputSeq = Seq(
+      Row("User1", 53.350, -3.141, "120", "Name 1"),
+      Row("User2", 53.373, -3.143, "213", "Name 2"),
+      Row("User1", 53.350, -3.141, "125", "Name 3"),
+      Row("User2", 53.373, -3.143, "220", "Name 2"),
+      Row("User1", 53.350, -3.141, "130", "Name 1"),
+      Row("User2", 53.373, -3.143, "230", "Name 3")
+    )//.toDF("Name", "Lat", "Lng", "Label1", "Label2")
+
+    val schema = List(
+      StructField("Name", StringType,false),
+      StructField("Lat", DoubleType,false),
+      StructField("Lng", DoubleType,false),
+      StructField("Label1", StringType,false),
+      StructField("Label2", StringType,false)
+    )
+
+    val dfIn1 = spark.createDataFrame(
+      spark.sparkContext.parallelize(inputSeq),
+      StructType(schema)
+    )
 
     var groupByCols = Seq("Name", "Lat", "Lng")
-    var aggegateCols = Seq("Label1")
+    var aggegateCols = Seq("Label1", "Label2")
 
-    var actualDf = JobGeoMapping.aggregateLabelsPerPoint(dfIn11, groupByCols, aggegateCols)
+    var actualDf = JobGeoMapping.aggregateLabelsPerPoint(dfIn1, groupByCols, aggegateCols)
 
     // Sort to keep the order (needed for dataframe comparision)
     actualDf = actualDf.sort("Name")
 
     val expectedData = Seq(
-      Row("User1", 53.350, -3.141, "120,125,130"),
-      Row("User2", 53.373, -3.143, "213,220,230")
+      Row("User1", 53.350, -3.141, "120,125,130", "Name 1,Name 3,Name 1"),
+      Row("User2", 53.373, -3.143, "213,220,230", "Name 2,Name 2,Name 3")
     )
 
     val expectedDF = spark.createDataFrame(
       spark.sparkContext.parallelize(expectedData),
-      dfIn11.schema
+      StructType(schema)
     ).sort("Name")
 
-    log.warn(actualDf.show)
-    log.warn(expectedDF.show)
-    assert(1 === 1)
+    assertDataFrameApproximateEquals(expectedDF, actualDf, 0.005)
+  }
 
+
+  test("countLabelsPerPoint test 1") {
+    val inputData = Seq(
+      Row("User1", 53.350, -3.141, "120,130", "Name 1,Name 3,Name 1"),
+      Row("User2", 53.373, -3.143, "213,220,230", "Name 2,Name 3")
+    )
+
+    val schema = List(
+      StructField("Name", StringType,false),
+      StructField("Lat", DoubleType,false),
+      StructField("Lng", DoubleType,false),
+      StructField("Label1", StringType,false),
+      StructField("Label2", StringType,false)
+    )
+
+    val dfIn1 = spark.createDataFrame(
+      spark.sparkContext.parallelize(inputData),
+      StructType(schema)
+    )
+
+    var actualDf = JobGeoMapping.countLabelsPerPoint(dfIn1, "Label1", ",", "Label1Count")
+
+    val expectedSchema = List(
+      StructField("Name", StringType,false),
+      StructField("Lat", DoubleType,false),
+      StructField("Lng", DoubleType,false),
+      StructField("Label1", StringType,false),
+      StructField("Label2", StringType,false),
+      StructField("Label1Count",IntegerType,false)
+    )
+
+    var expectedData = Seq(
+      Row("User1", 53.350, -3.141, "120,130", "Name 1,Name 3,Name 1", 2),
+      Row("User2", 53.373, -3.143, "213,220,230", "Name 2,Name 3", 3)
+    )
+
+    val expectedDF = spark.createDataFrame(
+      spark.sparkContext.parallelize(expectedData),
+      StructType(expectedSchema)
+    ).sort("Name")
+
+    assertDataFrameApproximateEquals(expectedDF, actualDf, 0.005)
   }
 }

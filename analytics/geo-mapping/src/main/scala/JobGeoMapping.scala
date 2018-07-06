@@ -44,15 +44,15 @@ object JobGeoMapping {
 
             val metadataToFilter = metadataToExtract.split(",")
 
-            var polygonsDf = CoordinatesUtils.loadPolygons(spark, polygonsPath, Some(metadataToFilter), index)
+            var df = CoordinatesUtils.loadPolygons(spark, polygonsPath, Some(metadataToFilter), index)
 
             if(!defaultPolygonsPath.isEmpty) {
               val defaultPolygonsDf = CoordinatesUtils.loadPolygons(spark, defaultPolygonsPath.get.toString, Some(metadataToFilter), index)
 
-              polygonsDf = polygonsDf.union(defaultPolygonsDf)
+              df = df.union(defaultPolygonsDf)
             }
 
-            polygonsDfs = polygonsDfs ++ Seq(polygonsDf)
+            polygonsDfs = polygonsDfs ++ Seq(df)
         }
 
         polygonsDfs
@@ -192,7 +192,7 @@ object JobGeoMapping {
 
             val resultDf = if(aggregateLabels) {
               val tmpDf = aggregateLabelsPerPoint(pointsLabeledDf, joinCols, metadataToFilter)
-              countLabelsPerPoint(tmpDf, metadataToFilter(0), ",", s"$metadataToFilter(0)" + "Count")
+              countLabelsPerPoint(tmpDf, metadataToFilter(0), ",", metadataToFilter(0) + "_Count")
             } else {
               pointsLabeledDf
             }
