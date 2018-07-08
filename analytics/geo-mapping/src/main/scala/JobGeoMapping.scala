@@ -80,8 +80,8 @@ object JobGeoMapping {
       * @param
       * @return
       */
-    def aggregateLabelsPerPoint(df: DataFrame, groupByCols: Seq[String], aggegateCols: Seq[String]):  DataFrame = {
-        val aggCols = aggegateCols.map(colName => expr(s"""concat_ws(",",collect_list($colName))""").alias(colName))
+    def aggregateLabelsPerPoint(df: DataFrame, groupByCols: Seq[String], aggegateCols: Seq[String], labelsSeparator: String):  DataFrame = {
+        val aggCols = aggegateCols.map(colName => expr(s"""concat_ws(\"$labelsSeparator\",collect_list($colName))""").alias(colName))
         val aggregatedDf =  df
         .groupBy (groupByCols.head, groupByCols.tail: _*)
         .agg(aggCols.head, aggCols.tail: _*)
@@ -95,10 +95,30 @@ object JobGeoMapping {
       * @param
       * @return
       */
-    def countLabelsPerPoint(df: DataFrame, labelColName: String, labelsSeperator: String, countAlias: String) : DataFrame = {
-        df.withColumn(countAlias, size(split(col(labelColName), labelsSeperator)))
+    def countLabelsPerPoint(df: DataFrame, labelColName: String, labelsSeparator: String, countAlias: String) : DataFrame = {
+        df.withColumn(countAlias, size(split(col(labelColName), labelsSeparator)))
     }
-    
+
+    /**
+      *
+      *
+      * @param
+      * @return
+      */
+    def removeSelectedLabel(df: DataFrame, labelColName: String, labelsSeparator: String, labelToRemove: String) : DataFrame = {
+      // Functionality can be merged to aggregateLabelsPerPoint with optional parameter.
+      val removeLabel = udf{(x: String, labelToRemove: String, labelsSeparator: String) =>
+        val labelSeq = x.split(labelsSeparator)
+        if(labelSeq.length > 1) {
+          labelSeq.filterNot(_ == labelToRemove).mkString(labelsSeparator)
+        }
+        else
+          labelSeq.mkString(labelsSeparator)
+      }
+
+      df.withColumn(labelColName, removeLabel(df(labelColName), lit(labelToRemove), lit(labelsSeparator)))
+    }
+
     def runJob(
       df:DataFrame, 
       xCol:String,
@@ -183,6 +203,7 @@ object JobGeoMapping {
         }
 
         var labeledDfs = Seq[DataFrame]()
+        val labelsSeparator = ","
 
         for((dfPolygons, metadataCols, index) <- (dfMultiPolygons, multiPolygonsMetadataCols.get, magellanIndex).zipped.toSeq) {
 
@@ -191,8 +212,8 @@ object JobGeoMapping {
             val pointsLabeledDf = runJob(dfIn, xColName, yColName, toGPS = toGPS, dfPolygons = dfPolygons, metadataCols = Some(metadataToFilter), magellanIndex = index, outPartitions = None, outPath = None)
 
             val resultDf = if(aggregateLabels) {
-              val tmpDf = aggregateLabelsPerPoint(pointsLabeledDf, joinCols, metadataToFilter)
-              countLabelsPerPoint(tmpDf, metadataToFilter(0), ",", metadataToFilter(0) + "_Count")
+              val tmpDf = aggregateLabelsPerPoint(pointsLabeledDf, joinCols, metadataToFilter, labelsSeparator)
+              countLabelsPerPoint(tmpDf, metadataToFilter(0), labelsSeparator, metadataToFilter(0) + "_Count")
             } else {
               pointsLabeledDf
             }
@@ -231,6 +252,7 @@ object JobGeoMapping {
       val aggregateLabels     = opt[Boolean](name="aggregate-labels", required = false, default=Some(false))
       val others              = trailArg[List[String]](required = false)
 
+      codependent(polygonsPath, metadataToFilter, magellanIndex)
       verify()
     }
 
