@@ -66,4 +66,51 @@ object CoordinatesUtils {
         df
     }
 
+    /**
+      *
+      *
+      * @param
+      * @return
+      */
+    def loadMultiPolygons(spark:SparkSession,
+                          pathSeq:Seq[String],
+                          metadataToExtractSeq:Option[Seq[Seq[String]]] = None,
+                          indexSeq:Seq[Option[Int]] = Seq(None)
+                         )  : Seq[DataFrame] = {
+
+      var polygonsDfs = Seq[DataFrame]()
+
+      for((polygonsPath, metadataToExtract, index) <- (pathSeq, metadataToExtractSeq.get, indexSeq).zipped.toSeq) {
+
+        val df = CoordinatesUtils.loadPolygons(spark, polygonsPath, Some(metadataToExtract), index)
+
+        polygonsDfs = polygonsDfs ++ Seq(df)
+      }
+
+      polygonsDfs
+    }
+
+    /**
+      *
+      *
+      * @param
+      * @return
+      */
+    def loadDefaultPolygons(spark:SparkSession,
+                           defaultPolygonsPath:String,
+                           metadataToExtractSeq:Option[Seq[Seq[String]]] = None,
+                           indexSeq:Seq[Option[Int]] = Seq(None)
+                         )  : Seq[DataFrame] = {
+
+      var polygonsDfs = Seq[DataFrame]()
+
+      for((metadataToExtract, index) <- (metadataToExtractSeq.get, indexSeq).zipped.toSeq) {
+
+        val df = CoordinatesUtils.loadPolygons(spark, defaultPolygonsPath, Some(metadataToExtract), index)
+
+        polygonsDfs = polygonsDfs ++ Seq(df)
+      }
+
+      polygonsDfs
+    }
 }

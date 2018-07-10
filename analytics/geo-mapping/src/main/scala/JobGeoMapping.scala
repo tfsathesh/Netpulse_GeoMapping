@@ -7,7 +7,12 @@ import magellan.Point
 
 object JobGeoMapping {
 
-  @transient lazy val log = org.apache.log4j.LogManager.getLogger("myLogger")
+  val LABELS_SEPARATOR              = ","
+  val MAGELLAN_INDEX_SEPARATOR      = ","
+  val METADATA_SEPARATOR_1          = "::"
+  val METADATA_SEPARATOR_2          = ","
+  val POLYGONS_PATH_SEPARATOR       = "::"
+
     def getSparkSession(name:String, consoleEcho:Boolean = true) : SparkSession = {
         val spark = SparkSession
           .builder()
@@ -25,54 +30,18 @@ object JobGeoMapping {
         spark
     }
 
-    /**
-      *
-      *
-      * @param
-      * @return
-      */
-      def loadMultiPolygons(spark:SparkSession,
-        multiPolygonsPath:Seq[String],
-        multiPolygonsMetadataToExtract:Option[Seq[String]] = None,
-        magellanIndex:Seq[Option[Int]] = Seq(None),
-        defaultPolygonsPath: Option[String] = None
-      )  : Seq[DataFrame] = {
+    def unionOfPolygonsDfSeq(polygonsDfSeq : Seq[DataFrame], defaultPolygonsDfSeq: Seq[DataFrame]): Seq[DataFrame] = {
+      var unionDfs = Seq[DataFrame]()
 
-        var polygonsDfs = Seq[DataFrame]()
+      for((polygonsDf, defaultPolygonsDf) <- (polygonsDfSeq, defaultPolygonsDfSeq).zipped.toSeq) {
+        val resDf = polygonsDf.union(defaultPolygonsDf)
 
-        for((polygonsPath, metadataToExtract, index) <- (multiPolygonsPath, multiPolygonsMetadataToExtract.get, magellanIndex).zipped.toSeq) {
+        unionDfs = unionDfs ++ Seq(resDf)
+      }
 
-            val metadataToFilter = metadataToExtract.split(",")
-
-            var df = CoordinatesUtils.loadPolygons(spark, polygonsPath, Some(metadataToFilter), index)
-
-            if(!defaultPolygonsPath.isEmpty) {
-              val defaultPolygonsDf = CoordinatesUtils.loadPolygons(spark, defaultPolygonsPath.get.toString, Some(metadataToFilter), index)
-
-              df = df.union(defaultPolygonsDf)
-            }
-
-            polygonsDfs = polygonsDfs ++ Seq(df)
-        }
-
-        polygonsDfs
+      unionDfs
     }
 
-    /**
-      *
-      *
-      * @param
-      * @return
-      */
-    def combineLabeledDataframes(labeledDfs: Seq[DataFrame], joinCols: Seq[String]) : DataFrame = {
-        // Expected common points data, do we need to do any check before join like (rows count and cols existence)?
-        var combinedDf = labeledDfs(0)
-        for(i  <-  1 until labeledDfs.length) {
-          combinedDf = combinedDf.join(labeledDfs(i), joinCols, "outer")
-        }
-
-        combinedDf
-    }
 
     /**
       *
@@ -80,8 +49,8 @@ object JobGeoMapping {
       * @param
       * @return
       */
-    def aggregateLabelsPerPoint(df: DataFrame, groupByCols: Seq[String], aggegateCols: Seq[String], labelsSeparator: String):  DataFrame = {
-        val aggCols = aggegateCols.map(colName => expr(s"""concat_ws(\"$labelsSeparator\",collect_list($colName))""").alias(colName))
+    def aggregateLabelsPerPoint(df: DataFrame, groupByCols: Seq[String], aggregateCols: Seq[String], labelsSeparator: String):  DataFrame = {
+        val aggCols = aggregateCols.map(colName => expr(s"""concat_ws(\"$labelsSeparator\",collect_list($colName))""").alias(colName))
         val aggregatedDf =  df
         .groupBy (groupByCols.head, groupByCols.tail: _*)
         .agg(aggCols.head, aggCols.tail: _*)
@@ -184,44 +153,58 @@ object JobGeoMapping {
       * @return
       */
     def runMultiPolygonJob(
+      spark: SparkSession,
       dfIn:DataFrame,
       xColName:String,
       yColName:String,
       toGPS:Boolean = true,
       dfMultiPolygons: Seq[DataFrame],
       polygonCol:String = "polygon",
-      multiPolygonsMetadataCols:Option[Seq[String]] = None,
+      metadataColsSeq:Option[Seq[Seq[String]]] = None,
       magellanIndex:Seq[Option[Int]] = Seq(None),
       aggregateLabels:Boolean = false,
       outPartitions:Option[Int] = None,
       outPath:Option[String] = None
     ) : DataFrame = {
 
-        var joinCols = dfIn.columns.toSeq
+        var firstIteration  = true
+        var inputDf         = dfIn
+        var xColNameIn      = xColName
+        var yColNameIn      = yColName
+        var toGPSIn         = toGPS
+        var combinedDf      = spark.emptyDataFrame
+        var groupByCols     = dfIn.columns.toSeq
         if (toGPS) {
-            joinCols = joinCols ++ Seq("lat", "lon")
+          groupByCols = groupByCols ++ Seq("lat", "lon")
         }
 
-        var labeledDfs = Seq[DataFrame]()
-        val labelsSeparator = ","
+        for((dfPolygons, metadataToFilter, index) <- (dfMultiPolygons, metadataColsSeq.get, magellanIndex).zipped.toSeq) {
 
-        for((dfPolygons, metadataCols, index) <- (dfMultiPolygons, multiPolygonsMetadataCols.get, magellanIndex).zipped.toSeq) {
+          val pointsLabeledDf = runJob(inputDf, xColNameIn, yColNameIn, toGPS = toGPSIn, dfPolygons = dfPolygons, metadataCols = Some(metadataToFilter), magellanIndex = index, outPartitions = None, outPath = None)
 
-            val metadataToFilter = metadataCols.split(",")
+          val resultDf = if(aggregateLabels) {
+            val tmpDf = aggregateLabelsPerPoint(pointsLabeledDf, groupByCols, metadataToFilter, LABELS_SEPARATOR)
+            countLabelsPerPoint(tmpDf, metadataToFilter(0), LABELS_SEPARATOR, metadataToFilter(0) + "_Count")
+          } else {
+            pointsLabeledDf
+          }
 
-            val pointsLabeledDf = runJob(dfIn, xColName, yColName, toGPS = toGPS, dfPolygons = dfPolygons, metadataCols = Some(metadataToFilter), magellanIndex = index, outPartitions = None, outPath = None)
-
-            val resultDf = if(aggregateLabels) {
-              val tmpDf = aggregateLabelsPerPoint(pointsLabeledDf, joinCols, metadataToFilter, labelsSeparator)
-              countLabelsPerPoint(tmpDf, metadataToFilter(0), labelsSeparator, metadataToFilter(0) + "_Count")
-            } else {
-              pointsLabeledDf
+          // runJob parameters are different from second iteration.
+          if(firstIteration) {
+            firstIteration = false
+            if(toGPS) {
+              xColNameIn  = "lon"
+              yColNameIn  = "lat"
+              toGPSIn     = false
             }
+          }
 
-            labeledDfs = labeledDfs ++ Seq(resultDf)
+          // Extra variable used, just for proper in and out naming purpose.
+          inputDf       = resultDf
+          combinedDf    = resultDf
+          groupByCols   = resultDf.columns.toSeq
+
         }
-
-        var combinedDf = combineLabeledDataframes(labeledDfs, joinCols)
 
         if (!outPartitions.isEmpty)
             combinedDf = combinedDf.repartition(outPartitions.get)
@@ -241,7 +224,7 @@ object JobGeoMapping {
     // Scallop config parameters
     class CLOpts(arguments: Seq[String]) extends ScallopConf(arguments) {
       val separator           = opt[String](name="separator", required = false, default=Some("\t"))
-      val magellanIndex       = opt[String](name="magellan-index", required = false, default=Some("-1"))
+      val magellanIndex       = opt[String](name="magellan-index", required = false, default=Some(""))
       val coordsInfo          = opt[String](name="coords-info", required = true)
       val toGPS               = opt[Boolean](name="to-gps", required = false, default=Some(false))
       val polygonsPath        = opt[String](name="polygons-path", required = false, default=Some(""))
@@ -252,7 +235,17 @@ object JobGeoMapping {
       val aggregateLabels     = opt[Boolean](name="aggregate-labels", required = false, default=Some(false))
       val others              = trailArg[List[String]](required = false)
 
-      codependent(polygonsPath, metadataToFilter, magellanIndex)
+      validate(magellanIndex, polygonsPath, metadataToFilter) { (index, paths, metadata) =>
+        val indexCount    = index.split(MAGELLAN_INDEX_SEPARATOR).length
+        val pathsCount    = paths.split(POLYGONS_PATH_SEPARATOR).length
+        val metadataCount = metadata.split(METADATA_SEPARATOR_1).length
+
+        if( (indexCount == pathsCount) && (pathsCount == metadataCount))
+          Right(Unit)
+        else
+          Left("Incorrect arguments: Check magellan index, polygons paths and metadata to filter parameters!!!")
+      }
+
       verify()
     }
 
@@ -262,16 +255,16 @@ object JobGeoMapping {
       * @param
       * @return
       */
-    def validateMagellanIndex(index: String, separator: String) : Seq[Option[Int]] = {
-        val magellanIndex = index.split(separator)
+    def convertStringIndexToIntSeq(index: String, separator: String) : Seq[Option[Int]] = {
+      val magellanIndex = index.split(separator)
 
-        val retIndex = magellanIndex.map { idx =>
-            val magellanIndexInt = idx.toInt
-            if (magellanIndexInt > 0 && (magellanIndexInt - magellanIndexInt % 5) >= 5)
-              Some(magellanIndexInt - (magellanIndexInt % 5))
-            else
-              None
-        }
+      val retIndex = magellanIndex.map { idx =>
+        val magellanIndexInt = if (idx == "") -1 else idx.toInt
+        if (magellanIndexInt > 0 && (magellanIndexInt - magellanIndexInt % 5) >= 5)
+          Some(magellanIndexInt - (magellanIndexInt % 5))
+        else
+          None
+      }
 
       retIndex
     }
@@ -284,13 +277,19 @@ object JobGeoMapping {
         val outPartitions       = if (clopts.outPartitions() == -1) None else Some(clopts.outPartitions())
         val coordsInfo          = clopts.coordsInfo()
         val toGPS               = clopts.toGPS()
-        val polygonsPath        = if(clopts.polygonsPath() == "") None else Some(clopts.polygonsPath().split("::").toSeq)
-        val metadataToFilter    = if (clopts.metadataToFilter() == "") None else Some(clopts.metadataToFilter().split("::").toSeq)
+        val polygonsPath        = if(clopts.polygonsPath() == "") None else Some(clopts.polygonsPath().split(POLYGONS_PATH_SEPARATOR).toSeq)
+        val metadataToFilter    = if (clopts.metadataToFilter() == "") None else Some(clopts.metadataToFilter().split(METADATA_SEPARATOR_1).toSeq)
         val others              = clopts.others()
         val outPath             = others(0)
-        val magellanIndex       = validateMagellanIndex(clopts.magellanIndex(), ",")
+        val magellanIndex       = convertStringIndexToIntSeq(clopts.magellanIndex(), MAGELLAN_INDEX_SEPARATOR)
         val defaultPolygonsPath = if(clopts.defaultPolygonsPath() == "") None else Some(clopts.defaultPolygonsPath())
         val aggregateLabels     = clopts.aggregateLabels()
+
+        // metadataToFilter type is Option[Seq[String]]. Each element is separated by ",".
+        // This need to be converted to Seq[Seq[String]]
+        val metadataToFilterSeq = for{
+                                      metaData <- metadataToFilter.get
+                                  } yield  metaData.split(METADATA_SEPARATOR_2).toSeq
 
         val tmp = coordsInfo.split("::")
         val xColName   = "_c%s".format(tmp(0))
@@ -312,8 +311,14 @@ object JobGeoMapping {
           else
               dfIn
 
-        val dfPolygons = loadMultiPolygons(spark, polygonsPath.get, metadataToFilter, magellanIndex, defaultPolygonsPath)
+        var polygonsDfSeq = CoordinatesUtils.loadMultiPolygons(spark, polygonsPath.get, Some(metadataToFilterSeq), magellanIndex)
 
-        runMultiPolygonJob(dfIn2, xColName, yColName, toGPS, dfPolygons, "polygon", metadataToFilter, magellanIndex, aggregateLabels, outPartitions = outPartitions, outPath = Some(outPath))
+        if(!defaultPolygonsPath.isEmpty) {
+          val defaultPolygonsDfSeq = CoordinatesUtils.loadDefaultPolygons(spark, defaultPolygonsPath.get, Some(metadataToFilterSeq), magellanIndex)
+
+          polygonsDfSeq = unionOfPolygonsDfSeq(polygonsDfSeq, defaultPolygonsDfSeq)
+        }
+
+        runMultiPolygonJob(spark, dfIn2, xColName, yColName, toGPS, polygonsDfSeq, "polygon", Some(metadataToFilterSeq), magellanIndex, aggregateLabels, outPartitions = outPartitions, outPath = Some(outPath))
     }
  }

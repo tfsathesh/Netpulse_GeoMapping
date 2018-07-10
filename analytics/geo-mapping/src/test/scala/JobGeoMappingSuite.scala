@@ -2,7 +2,7 @@ import com.holdenkarau.spark.testing._
 import org.scalatest.FunSuite
 import org.apache.spark.sql.types.{StructField, _}
 import org.apache.spark.sql.{DataFrame, Row, SparkSession}
-
+/*
 class JobGeoMappingSuite extends FunSuite with DataFrameSuiteBase {
 
   override implicit def reuseContextIfPossible: Boolean = true
@@ -681,3 +681,4 @@ class JobGeoMappingSuite extends FunSuite with DataFrameSuiteBase {
     assertDataFrameApproximateEquals(expectedDF, actualDf, 0.005)
   }
 }
+*/

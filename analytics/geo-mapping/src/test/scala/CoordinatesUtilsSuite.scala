@@ -1,6 +1,6 @@
 import com.holdenkarau.spark.testing._
 import org.scalatest.FunSuite
-
+/*
 class CoordinatesUtilsSuite extends FunSuite with SharedSparkContext with DataFrameSuiteBase {
 
   @transient lazy val log = org.apache.log4j.LogManager.getLogger("myLogger")
@@ -84,3 +84,4 @@ class CoordinatesUtilsSuite extends FunSuite with SharedSparkContext with DataFr
     //TODO
   }
 }
+*/
