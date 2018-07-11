@@ -7,13 +7,13 @@ import magellan.Point
 
 object JobGeoMapping {
 
-  val LABELS_SEPARATOR              = ","
+  val METADATA_SEPARATOR            = ","
   val MAGELLAN_INDEX_SEPARATOR      = ","
   val METADATA_SEPARATOR_1          = "::"
   val METADATA_SEPARATOR_2          = ","
   val POLYGONS_PATH_SEPARATOR       = "::"
-  // Label used in default polygons. This can be optional scallop parameter? need to discuss with reviewer.
-  val DEFAULT_POLYGONS_LABEL        = ""
+  // metadata used in default polygons. This can be optional scallop parameter? need to discuss with reviewer.
+  val DEFAULT_POLYGONS_METADATA     = ""
 
     def getSparkSession(name:String, consoleEcho:Boolean = true) : SparkSession = {
         val spark = SparkSession
@@ -32,31 +32,19 @@ object JobGeoMapping {
         spark
     }
 
-    def unionOfPolygonsDf(polygonsDfSeq : Seq[DataFrame], defaultPolygonsDfSeq: Seq[DataFrame]): Seq[DataFrame] = {
-      var unionDfs = Seq[DataFrame]()
-
-      for((polygonsDf, defaultPolygonsDf) <- (polygonsDfSeq, defaultPolygonsDfSeq).zipped.toSeq) {
-        val resDf = polygonsDf.union(defaultPolygonsDf)
-
-        unionDfs = unionDfs ++ Seq(resDf)
-      }
-
-      unionDfs
-    }
-
     /**
       *
       *
       * @param
       * @return
       */
-    def removeLabel(labelInString: String, labelToRemove: String, labelsSeparator: String) : String = {
-      val labelSeq = labelInString.split(labelsSeparator)
-      if(labelSeq.length > 1) {
-        labelSeq.filterNot(_ == labelToRemove).mkString(labelsSeparator)
+    def removeDefaultMetadata(metadataInString: String, metadataToRemove: String, metadataSeparator: String) : String = {
+      val metadataSeq = metadataInString.split(metadataSeparator)
+      if(metadataSeq.length > 1) {
+        metadataSeq.filterNot(_ == metadataToRemove).mkString(metadataSeparator)
       }
       else
-        labelSeq.mkString(labelsSeparator)
+        metadataSeq.mkString(metadataSeparator)
     }
 
     /**
@@ -65,36 +53,28 @@ object JobGeoMapping {
       * @param
       * @return
       */
-    def aggregateLabelsAndFilter(
-                                  df: DataFrame,
-                                  groupByCols: Seq[String],
-                                  aggregateCols: Seq[String],
-                                  labelsSeparator: String,
-                                  labelToRemove: Option[String]):
+    def consolidateMetadata(
+          df: DataFrame,
+          groupByCols: Seq[String],
+          aggregateCols: Seq[String],
+          metadataSeparator: String,
+          defaultMetadata: Option[String]):
     DataFrame = {
-      val aggCols = aggregateCols.map(colName => expr(s"""concat_ws(\"$labelsSeparator\",collect_list($colName))""").alias(colName))
+      val aggCols = aggregateCols.map(colName => expr(s"""concat_ws(\"$metadataSeparator\",collect_list($colName))""").alias(colName))
       var aggregatedDf =  df
-        .groupBy (groupByCols.head, groupByCols.tail: _*)
+        .groupBy (groupByCols.map(name => col(name)):_*)
         .agg(aggCols.head, aggCols.tail: _*)
 
-      if(!labelToRemove.isEmpty) {
-        val removeLabelUDF = udf{(labelIn: String) => removeLabel(labelIn, labelToRemove.get, labelsSeparator) }
+      if(!defaultMetadata.isEmpty) {
+        val removeDefaultMetadataUDF = udf{(metadataIn: String) => removeDefaultMetadata(metadataIn, defaultMetadata.get, metadataSeparator) }
 
         for(colName <- aggregateCols)
-          aggregatedDf = aggregatedDf.withColumn(colName, removeLabelUDF(col(colName)))
+          aggregatedDf = aggregatedDf.withColumn(colName, removeDefaultMetadataUDF(col(colName)))
       }
 
-      aggregatedDf
-    }
-
-    /**
-      *
-      *
-      * @param
-      * @return
-      */
-    def countLabelsPerPoint(df: DataFrame, labelColName: String, labelsSeparator: String, countAlias: String) : DataFrame = {
-        df.withColumn(countAlias, size(split(col(labelColName), labelsSeparator)))
+      // Need to count after removing default metadata.
+      // We only need to count one metadata since all metadata count will be same for given polygons set.
+      aggregatedDf.withColumn(aggregateCols(0).toString + "_Count", size(split(col(aggregateCols(0)), metadataSeparator)))
     }
 
     def runJob(
@@ -171,7 +151,7 @@ object JobGeoMapping {
       polygonCol:String = "polygon",
       metadataColsSeq:Option[Seq[Seq[String]]] = None,
       magellanIndex:Seq[Option[Int]] = Seq(None),
-      aggregateLabels:Boolean = false,
+      aggregateMetadata:Boolean = false,
       outPartitions:Option[Int] = None,
       outPath:Option[String] = None
     ) : DataFrame = {
@@ -191,10 +171,8 @@ object JobGeoMapping {
 
           val pointsLabeledDf = runJob(inputDf, xColNameIn, yColNameIn, toGPS = toGPSIn, dfPolygons = dfPolygons, metadataCols = Some(metadataToFilter), magellanIndex = index, outPartitions = None, outPath = None)
 
-          val resultDf = if(aggregateLabels) {
-            val tmpDf = aggregateLabelsAndFilter(pointsLabeledDf, groupByCols, metadataToFilter, LABELS_SEPARATOR, Some(DEFAULT_POLYGONS_LABEL))
-
-            countLabelsPerPoint(tmpDf, metadataToFilter(0), LABELS_SEPARATOR, metadataToFilter(0) + "_Count")
+          val resultDf = if(aggregateMetadata) {
+            consolidateMetadata(pointsLabeledDf, groupByCols, metadataToFilter, METADATA_SEPARATOR, Some(DEFAULT_POLYGONS_METADATA))
           } else {
             pointsLabeledDf
           }
@@ -241,7 +219,7 @@ object JobGeoMapping {
       val outPartitions       = opt[Int](name="out-partitions", required = false, default=Some(-1))
       val metadataToFilter    = opt[String](name="metadata-to-filter", required = false, default=Some(""))
       val defaultPolygonsPath = opt[String](name="default-polygons-path", required = false, default=Some(""))
-      val aggregateLabels     = opt[Boolean](name="aggregate-labels", required = false, default=Some(false))
+      val aggregateMetadata   = opt[Boolean](name="aggregate-labels", required = false, default=Some(false))
       val others              = trailArg[List[String]](required = false)
 
       validate(magellanIndex, polygonsPath, metadataToFilter) { (index, paths, metadata) =>
@@ -292,7 +270,7 @@ object JobGeoMapping {
         val outPath             = others(0)
         val magellanIndex       = convertStringIndexToIntSeq(clopts.magellanIndex(), MAGELLAN_INDEX_SEPARATOR)
         val defaultPolygonsPath = if(clopts.defaultPolygonsPath() == "") None else Some(clopts.defaultPolygonsPath())
-        val aggregateLabels     = clopts.aggregateLabels()
+        val aggregateMetadata   = clopts.aggregateMetadata()
 
         // metadataToFilter type is Option[Seq[String]]. Each element is separated by ",".
         // This need to be converted to Seq[Seq[String]]
@@ -325,9 +303,9 @@ object JobGeoMapping {
         if(!defaultPolygonsPath.isEmpty) {
           val defaultPolygonsDfSeq = CoordinatesUtils.loadDefaultPolygons(spark, defaultPolygonsPath.get, Some(metadataToFilterSeq), magellanIndex)
 
-          polygonsDfSeq = unionOfPolygonsDf(polygonsDfSeq, defaultPolygonsDfSeq)
+          polygonsDfSeq = CoordinatesUtils.unionOfPolygonsDf(polygonsDfSeq, defaultPolygonsDfSeq)
         }
 
-        runMultiPolygonJob(spark, dfIn2, xColName, yColName, toGPS, polygonsDfSeq, "polygon", Some(metadataToFilterSeq), magellanIndex, aggregateLabels, outPartitions = outPartitions, outPath = Some(outPath))
+        runMultiPolygonJob(spark, dfIn2, xColName, yColName, toGPS, polygonsDfSeq, "polygon", Some(metadataToFilterSeq), magellanIndex, aggregateMetadata, outPartitions = outPartitions, outPath = Some(outPath))
     }
  }

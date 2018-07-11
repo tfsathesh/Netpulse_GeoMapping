@@ -113,4 +113,22 @@ object CoordinatesUtils {
 
       polygonsDfs
     }
+
+    /**
+      *
+      *
+      * @param
+      * @return
+      */
+    def unionOfPolygonsDf(polygonsDfSeq : Seq[DataFrame], defaultPolygonsDfSeq: Seq[DataFrame]): Seq[DataFrame] = {
+      var unionDfs = Seq[DataFrame]()
+
+      for((polygonsDf, defaultPolygonsDf) <- (polygonsDfSeq, defaultPolygonsDfSeq).zipped.toSeq) {
+        val resDf = polygonsDf.union(defaultPolygonsDf)
+
+        unionDfs = unionDfs ++ Seq(resDf)
+      }
+
+      unionDfs
+    }
 }
