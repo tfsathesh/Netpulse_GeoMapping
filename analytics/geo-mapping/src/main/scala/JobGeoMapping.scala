@@ -7,10 +7,9 @@ import magellan.Point
 
 object JobGeoMapping {
 
-  val METADATA_SEPARATOR            = ","
   val MAGELLAN_INDEX_SEPARATOR      = ","
   val METADATA_SEPARATOR_1          = "::"
-  val METADATA_SEPARATOR_2          = ","
+  val METADATA_SEPARATOR            = ","
   val POLYGONS_PATH_SEPARATOR       = "::"
   // metadata used in default polygons. This can be optional scallop parameter? need to discuss with reviewer.
   val DEFAULT_POLYGONS_METADATA     = ""
@@ -276,7 +275,7 @@ object JobGeoMapping {
         // This need to be converted to Seq[Seq[String]]
         val metadataToFilterSeq = for{
                                       metaData <- metadataToFilter.get
-                                  } yield  metaData.split(METADATA_SEPARATOR_2).toSeq
+                                  } yield  metaData.split(METADATA_SEPARATOR).toSeq
 
         val tmp = coordsInfo.split("::")
         val xColName   = "_c%s".format(tmp(0))
