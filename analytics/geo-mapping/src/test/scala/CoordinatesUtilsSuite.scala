@@ -1,9 +1,12 @@
 import com.holdenkarau.spark.testing._
 import org.scalatest.FunSuite
 import org.apache.spark.sql.SparkSession
+import org.apache.spark.sql.{Row, DataFrame}
+import org.apache.spark.sql.types.StructType
 
-class CoordinatesUtilsSuite extends FunSuite with SharedSparkContext with DataFrameSuiteBase {
+class CoordinatesUtilsSuite extends FunSuite with DataFrameSuiteBase {
   override implicit def reuseContextIfPossible: Boolean = true
+  import spark.implicits._
   /**
     *
     *
@@ -281,6 +284,44 @@ class CoordinatesUtilsSuite extends FunSuite with SharedSparkContext with DataFr
 
       assertDataFrameApproximateEquals(expectedDf, actualDf, 0.005)
     }
+  }
 
+  test("toGPS test conversion") {
+    //def toGPS(df:DataFrame, xCol:String, yCol:String) : DataFrame = {
+    val dfIn = Seq(
+      (324136.095, 384397.104),
+      (324011.005, 386869.185),
+      (322813.033, 384881.837),
+      (322333.396, 386497.332),
+      (322834.232, 384312.657),
+      (322063.609, 387763.394),
+      (322335.586, 385372.306),
+      (331362.605, 380615.023),
+      (331066.549, 392061.442),
+      (327356.172, 390689.014),
+      (325596.000, 387311.000)
+    ).toDF("xCentroid", "yCentroid")
+
+    val actualDf = CoordinatesUtils.toGPS(dfIn, "xCentroid", "yCentroid")
+
+    val expectedData = Seq(
+      Row(324136.095, 384397.104, 53.35099678, -3.141149883),
+      Row(324011.005, 386869.185, 53.37319495, -3.143623564),
+      Row(322813.033, 384881.837, 53.35516125, -3.161139938),
+      Row(322333.396, 386497.332, 53.36960895, -3.168741824),
+      Row(322834.232, 384312.657, 53.35004925, -3.160682502),
+      Row(322063.609, 387763.394, 53.38094691, -3.173108327),
+      Row(322335.586, 385372.306, 53.35949896, -3.168432186),
+      Row(331362.605, 380615.023, 53.31799526238038, -3.0317870546147434),
+      Row(331066.549, 392061.442, 53.42082716988047, -3.0387306574442197),
+      Row(327356.172, 390689.014, 53.407994633513766, -3.0942343205408784),
+      Row(325596.000, 387311.000, 53.37739135826915,  -3.1199093810384695)
+    )
+
+    val expectedDf = spark.createDataFrame(
+      spark.sparkContext.parallelize(expectedData),
+      StructType(actualDf.schema))
+
+    assertDataFrameApproximateEquals(expectedDf, actualDf, 0.005)
   }
 }

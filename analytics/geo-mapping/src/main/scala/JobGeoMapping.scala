@@ -245,7 +245,7 @@ object JobGeoMapping {
       val magellanIndex = index.split(separator)
 
       val retIndex = magellanIndex.map { idx =>
-        val magellanIndexInt = if (idx == "") -1 else idx.toInt
+        val magellanIndexInt = if (idx == "" || idx == " ") -1 else idx.toInt
         if (magellanIndexInt > 0 && (magellanIndexInt - magellanIndexInt % 5) >= 5)
           Some(magellanIndexInt - (magellanIndexInt % 5))
         else
