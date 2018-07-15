@@ -80,7 +80,20 @@ object CoordinatesUtils {
 
       var polygonsDfs = Seq[DataFrame]()
 
-      for((polygonsPath, metadataToExtract, index) <- (pathSeq, metadataToExtractSeq.get, indexSeq).zipped.toSeq) {
+      // If metadata is default values then convert it to Seq of defaults based on number of polygons sets.
+      val metadataSeqIn:Seq[Seq[String]] = if(metadataToExtractSeq.isEmpty)
+         Seq.fill(pathSeq.length)(Seq(""))
+      else
+        metadataToExtractSeq.get
+
+      // If index is default values then convert it to Seq of defaults based on number of polygons sets.
+      val indexSeqIn:Seq[Option[Int]] = if(indexSeq.length == 1 && indexSeq(0).isEmpty)
+        Seq.fill(pathSeq.length)(None)
+      else
+        indexSeq
+
+      //
+      for((polygonsPath, metadataToExtract, index) <- (pathSeq, metadataSeqIn, indexSeqIn).zipped.toSeq) {
 
         val df = CoordinatesUtils.loadPolygons(spark, polygonsPath, Some(metadataToExtract), index)
 
@@ -104,7 +117,7 @@ object CoordinatesUtils {
 
       var polygonsDfs = Seq[DataFrame]()
 
-      for((metadataToExtract, index) <- (metadataToExtractSeq.get, indexSeq).zipped.toSeq) {
+      for((metadataToExtract, index) <- (metadataToExtractSeq.getOrElse(Seq(Seq(""))), indexSeq).zipped.toSeq) {
 
         val df = CoordinatesUtils.loadPolygons(spark, defaultPolygonsPath, Some(metadataToExtract), index)
 

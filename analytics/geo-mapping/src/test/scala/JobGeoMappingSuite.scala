@@ -2,16 +2,13 @@ import com.holdenkarau.spark.testing._
 import org.scalatest.FunSuite
 import org.apache.spark.sql.types._
 import org.apache.spark.sql.Row
+import org.rogach.scallop.exceptions.ScallopException
 
 class JobGeoMappingSuite extends FunSuite with DataFrameSuiteBase {
 
   override implicit def reuseContextIfPossible: Boolean = true
 
   import spark.implicits._
-
-  ignore("getSparkSession TBD") {
-
-  }
 
   test("Magellan Index input check") {
 
@@ -249,7 +246,6 @@ class JobGeoMappingSuite extends FunSuite with DataFrameSuiteBase {
       JobGeoMapping.consolidateMetadata(dfIn, groupByCols, aggregateCols, JobGeoMapping.METADATA_SEPARATOR, None)
     }
   }
-
 
     test("runMultiPolygonsJob test (Single polygons set)") {
 
@@ -494,4 +490,110 @@ class JobGeoMappingSuite extends FunSuite with DataFrameSuiteBase {
 
     assertDataFrameApproximateEquals(expectedDF, actualDf, 0.005)
   }
+
+  test("CLOpts test default values") {
+    val clopts = new JobGeoMapping.CLOpts(Seq(
+      "--coords-info", "1::2::PointDataPath.txt"
+    ))
+
+    val defaultSeparator          = "\t"
+    val defaultMagellanIndex      = ""
+    val defaultToGPS              = false
+    val defaultPolygonPath        = ""
+    val defaultInPartitions       = -1
+    val defaultOutPartitions      = -1
+    val defaultMetadataToFilter   = ""
+    val defaultPolygonsPath       = ""
+    val defaultAggregateMetadata  = false
+
+    assert(clopts.separator() === defaultSeparator, "Separator")
+    assert(clopts.magellanIndex() === defaultMagellanIndex, "magellan index")
+    assert(clopts.coordsInfo() === "1::2::PointDataPath.txt", "coordsInfo")
+    assert(clopts.toGPS() === defaultToGPS, "toGPS")
+    assert(clopts.polygonsPath() === defaultPolygonPath, "polygonsPath")
+    assert(clopts.inPartitions() === defaultInPartitions, "inPartitions")
+    assert(clopts.outPartitions() === defaultOutPartitions, "outPartitions")
+    assert(clopts.metadataToFilter() === defaultMetadataToFilter, "metadataToFilter")
+    assert(clopts.defaultPolygonsPath() === defaultPolygonsPath, "defaultPolygonsPath")
+    assert(clopts.aggregateMetadata() === defaultAggregateMetadata, "aggregateMetadata")
+  }
+
+  test("CLOpts test mix of default and inputs") {
+    val clopts = new JobGeoMapping.CLOpts(Seq(
+      "--separator", ",",
+      "--magellan-index", "5",
+      "--coords-info", "1::2::PointDataPath.txt"
+    ))
+
+    val expectedSeparator         = ","
+    val expectedMagellanIndex     = "5"
+    val defaultToGPS              = false
+    val defaultPolygonPath        = ""
+    val defaultInPartitions       = -1
+    val defaultOutPartitions      = -1
+    val defaultMetadataToFilter   = ""
+    val defaultPolygonsPath       = ""
+    val defaultAggregateMetadata  = false
+
+    assert(clopts.separator() === expectedSeparator, "Separator")
+    assert(clopts.magellanIndex() === expectedMagellanIndex, "magellan index")
+    assert(clopts.coordsInfo() === "1::2::PointDataPath.txt", "coordsInfo")
+    assert(clopts.toGPS() === defaultToGPS, "toGPS")
+    assert(clopts.polygonsPath() === defaultPolygonPath, "polygonsPath")
+    assert(clopts.inPartitions() === defaultInPartitions, "inPartitions")
+    assert(clopts.outPartitions() === defaultOutPartitions, "outPartitions")
+    assert(clopts.metadataToFilter() === defaultMetadataToFilter, "metadataToFilter")
+    assert(clopts.defaultPolygonsPath() === defaultPolygonsPath, "defaultPolygonsPath")
+    assert(clopts.aggregateMetadata() === defaultAggregateMetadata, "aggregateMetadata")
+  }
+
+  test("CLOpts test custom validator") {
+
+    var clopts = new JobGeoMapping.CLOpts(Seq(
+      "--magellan-index", "5,5,5",
+      "--coords-info", "1::2::PointDataPath.txt",
+      "--polygons-path", "path1::path2::path3",
+      "--metadata-to-filter", "metadata1::metadata2::metadata3"
+    ))
+
+    val expectedMagellanIndex = "5,5,5"
+    val expectedPolygonsPath = "path1::path2::path3"
+    val expectedMetadata = "metadata1::metadata2::metadata3"
+
+    assert(clopts.magellanIndex() === expectedMagellanIndex, "magellan index")
+    assert(clopts.polygonsPath() === expectedPolygonsPath, "polygonsPath")
+    assert(clopts.metadataToFilter() === expectedMetadata, "metadataToFilter")
+
+    val expectedErrorMessage = "Incorrect arguments: Check magellan index, polygons paths and metadata to filter parameters!!!"
+    // Incorrect number of magellan index.
+    var argsIn = Array(
+      "--magellan-index", "5",
+      "--coords-info", "1::2::PointDataPath.txt",
+      "--polygons-path", "path1::path2::path3",
+      "--metadata-to-filter", "metadata1::metadata2::metadata3"
+    )
+    TestHelper.clOptsErrorTest(argsIn, expectedErrorMessage)
+
+    // Incorrect number of paths.
+    argsIn = Array(
+        "--magellan-index", "5,5,5",
+        "--coords-info", "1::2::PointDataPath.txt",
+        "--polygons-path", "path1::path2",
+        "--metadata-to-filter", "metadata1::metadata2::metadata3"
+    )
+    TestHelper.clOptsErrorTest(argsIn, expectedErrorMessage)
+
+    // Incorrect number of metadata-to-filter.
+    argsIn = Array(
+      "--magellan-index", "5,5,5",
+      "--coords-info", "1::2::PointDataPath.txt",
+      "--polygons-path", "path1::path2::path3",
+      "--metadata-to-filter", "metadata1::metadata2"
+    )
+    TestHelper.clOptsErrorTest(argsIn, expectedErrorMessage)
+
+    //Check coordsInfo required
+    TestHelper.clOptsErrorTest(Array(""), "Required option 'coords-info' not found")
+  }
+
 }

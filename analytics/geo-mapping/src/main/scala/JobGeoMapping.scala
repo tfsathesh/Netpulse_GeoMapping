@@ -274,7 +274,7 @@ object JobGeoMapping {
         // metadataToFilter type is Option[Seq[String]]. Each element is separated by ",".
         // This need to be converted to Seq[Seq[String]]
         val metadataToFilterSeq = for{
-                                      metaData <- metadataToFilter.get
+                                      metaData <- metadataToFilter.getOrElse(Seq(""))
                                   } yield  metaData.split(METADATA_SEPARATOR).toSeq
 
         val tmp = coordsInfo.split("::")

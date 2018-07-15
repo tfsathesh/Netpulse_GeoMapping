@@ -7,58 +7,6 @@ import org.apache.spark.sql.types.StructType
 class CoordinatesUtilsSuite extends FunSuite with DataFrameSuiteBase {
   override implicit def reuseContextIfPossible: Boolean = true
   import spark.implicits._
-  /**
-    *
-    *
-    * @param
-    * @return
-    */
-  def loadMultiPolygonsTest(spark:SparkSession,
-                            pathSeq:Seq[String],
-                            metadataToExtractSeq:Option[Seq[Seq[String]]] = None,
-                            magellanIndex:Seq[Option[Int]] = Seq(None)
-                           ): Unit = {
-
-    assert(metadataToExtractSeq.get.length === magellanIndex.length)
-    assert(pathSeq.length === magellanIndex.length)
-
-    val expectedPolygonSetCount = pathSeq.length
-    // Load with out default set
-    val loadedPolygonsDf = CoordinatesUtils.loadMultiPolygons(spark, pathSeq, metadataToExtractSeq, magellanIndex)
-
-    assert(loadedPolygonsDf.length === expectedPolygonSetCount)
-
-    // Verify polygons loaded and dataframe contains metadata columns.
-    for ((polygonsDf, metadataToExtract, index) <- (loadedPolygonsDf, metadataToExtractSeq.get, magellanIndex).zipped.toSeq) {
-      assertTrue(polygonsDf.count >= 1)
-      assertTrue(polygonsDf.columns.toSeq.containsSlice(metadataToExtract))
-      if(!index.isEmpty)
-        assertTrue(polygonsDf.columns.seq.contains("index"))
-      else
-        assertTrue(!polygonsDf.columns.seq.contains("index"))
-    }
-  }
-
-  def loadDefaultPolygonsTest(spark:SparkSession,
-                            path:String,
-                            metadataToExtractSeq:Option[Seq[Seq[String]]] = None,
-                            magellanIndex:Seq[Option[Int]] = Seq(None)
-                           ): Unit = {
-
-    assert(metadataToExtractSeq.get.length === magellanIndex.length)
-
-    val expectedPolygonSetCount = magellanIndex.length
-    // Load with out default set
-    val loadedPolygonsDf = CoordinatesUtils.loadDefaultPolygons(spark, path, metadataToExtractSeq, magellanIndex)
-
-    assert(loadedPolygonsDf.length === expectedPolygonSetCount)
-
-    // Verify polygons loaded and dataframe contains metadata columns.
-    for ((polygonsDf, metadataToExtract) <- loadedPolygonsDf.zip(metadataToExtractSeq.get)) {
-      assertTrue(polygonsDf.count >= 1)
-      assertTrue(polygonsDf.columns.toSeq.containsSlice(metadataToExtract))
-    }
-  }
 
   test("loadPolygons test 0 ") {
     val polygonsPath = this.getClass.getClassLoader.getResource("geojson/beacon_gps_sample.geojson").getPath
@@ -90,7 +38,6 @@ class CoordinatesUtilsSuite extends FunSuite with DataFrameSuiteBase {
     assert(polygonsDf.count >= 1)
     assertTrue(polygonsDf.columns.toSeq.containsSlice(metadataToFilter))
     assertTrue(polygonsDf.columns.toSeq.contains("index"))
-
   }
 
   test("loadPolygons test 2") {
@@ -157,15 +104,15 @@ class CoordinatesUtilsSuite extends FunSuite with DataFrameSuiteBase {
 
     // Check incorrect metadata value is "-"
     //TODO
-    //assertTrue(polygonsDf.select(polygonsDf("Postdist1")).collect().forall(_ === "-"))
+    //assertTrue(polygonsDf.select(polygonsDf("Postdist1")).collect.forall(_ === "-"))
 
     // Check correct metadata value is not "-"
     //TODO
-    //assertTrue(polygonsDf.select(polygonsDf("Postarea")).collect().forall(_ != "-"))
+    //assertTrue(polygonsDf.select(polygonsDf("Postarea")).collect.forall(_ != "-"))
   }
 
 
-  test("loadMultiPolygons test 1") {
+  test("loadMultiPolygons test") {
 
     val polygonsPath1                   = this.getClass.getClassLoader.getResource("geojson/beacon_gps_sample.geojson").getPath
     val polygonsPath2                   = this.getClass.getClassLoader.getResource("geojson/postdist_gps_sample.geojson").getPath
@@ -176,30 +123,30 @@ class CoordinatesUtilsSuite extends FunSuite with DataFrameSuiteBase {
                                           Seq("name"))
     val magellanIndex                   = Seq(Some(5), None, Some(15))
 
-    loadMultiPolygonsTest(spark, multiPolygonsPath, Some(metadataToExtractSeq), magellanIndex)
+    TestHelper.loadMultiPolygonsTest(spark, multiPolygonsPath, Some(metadataToExtractSeq), magellanIndex)
   }
 
-  test("loadMultiPolygons test 2 (single path)") {
+  test("loadMultiPolygons (single path)") {
 
     val polygonsPath1                   = this.getClass.getClassLoader.getResource("geojson/beacon_gps_sample.geojson").getPath
     val multiPolygonsPath               = Seq(polygonsPath1)
     val metadataToExtractSeq            = Seq(Seq("RadioManager", "UID", "Optimiser", "CHUNK,AREA_OP", "AREA_OWNER"))
     val magellanIndex                   = Seq(Some(5))
 
-    loadMultiPolygonsTest(spark, multiPolygonsPath, Some(metadataToExtractSeq), magellanIndex)
+    TestHelper.loadMultiPolygonsTest(spark, multiPolygonsPath, Some(metadataToExtractSeq), magellanIndex)
   }
 
-  test("loadMultiPolygons test 4") {
+  test("loadMultiPolygons empty metadata") {
 
     val polygonsPath1                   = this.getClass.getClassLoader.getResource("geojson/beacon_gps_sample.geojson").getPath
     val multiPolygonsPath               = Seq(polygonsPath1)
     val metadataToExtractSeq            = Seq(Seq(""))
     val magellanIndex                   = Seq(Some(5))
 
-    loadMultiPolygonsTest(spark, multiPolygonsPath, Some(metadataToExtractSeq), magellanIndex)
+    TestHelper.loadMultiPolygonsTest(spark, multiPolygonsPath, Some(metadataToExtractSeq), magellanIndex)
   }
 
-  test("loadMultiPolygons test 5") {
+  test("loadMultiPolygons test magellan index none") {
 
     val polygonsPath1                   = this.getClass.getClassLoader.getResource("geojson/beacon_gps_sample.geojson").getPath
     val polygonsPath2                   = this.getClass.getClassLoader.getResource("geojson/postdist_gps_sample.geojson").getPath
@@ -210,7 +157,16 @@ class CoordinatesUtilsSuite extends FunSuite with DataFrameSuiteBase {
       Seq("name"))
     val magellanIndex                   = Seq(None, None, None)
 
-    loadMultiPolygonsTest(spark, multiPolygonsPath, Some(metadataToExtractSeq), magellanIndex)
+    TestHelper.loadMultiPolygonsTest(spark, multiPolygonsPath, Some(metadataToExtractSeq), magellanIndex)
+  }
+
+  test("loadMultiPolygons test default parameters") {
+    val polygonsPath1                   = this.getClass.getClassLoader.getResource("geojson/beacon_gps_sample.geojson").getPath
+    val polygonsPath2                   = this.getClass.getClassLoader.getResource("geojson/postdist_gps_sample.geojson").getPath
+    val polygonsPath3                   = this.getClass.getClassLoader.getResource("geojson/districts_gps_sample.geojson").getPath
+    val multiPolygonsPath               = Seq(polygonsPath1, polygonsPath2, polygonsPath3)
+
+    TestHelper.loadMultiPolygonsTest(spark, multiPolygonsPath)
   }
 
   ignore("loadMultiPolygons test with shp files") {
@@ -224,34 +180,40 @@ class CoordinatesUtilsSuite extends FunSuite with DataFrameSuiteBase {
                                           Seq("name"))
     val magellanIndex                   = Seq(Some(10), Some(5), None)
 
-    loadMultiPolygonsTest(spark, multiPolygonsPath, Some(multiPolygonsMetadataToExtract), magellanIndex)
+    TestHelper.loadMultiPolygonsTest(spark, multiPolygonsPath, Some(multiPolygonsMetadataToExtract), magellanIndex)
   }
 
-  test("loadDefaultPolygons test 1") {
-    val defaultpolygonsPath               = this.getClass.getClassLoader.getResource("geojson/defaultPolygon.geojson").getPath
+  test("loadDefaultPolygons test1") {
+    val defaultPolygonsPath               = this.getClass.getClassLoader.getResource("geojson/defaultPolygon.geojson").getPath
     val metadataToExtractSeq              = Seq(Seq("RadioManager", "UID" ,"Optimiser", "CHUNK", "AREA_OP", "AREA_OWNER"),
                                           Seq("Postdist", "Postarea"),
                                           Seq("name"))
     val magellanIndex                   = Seq(Some(10), Some(5), None)
 
-    loadDefaultPolygonsTest(spark, defaultpolygonsPath, Some(metadataToExtractSeq), magellanIndex)
+    TestHelper.loadDefaultPolygonsTest(spark, defaultPolygonsPath, Some(metadataToExtractSeq), magellanIndex)
   }
 
-  test("loadDefaultPolygons test 2") {
-    val defaultpolygonsPath               = this.getClass.getClassLoader.getResource("geojson/defaultPolygon.geojson").getPath
+  test("loadDefaultPolygons test2") {
+    val defaultPolygonsPath               = this.getClass.getClassLoader.getResource("geojson/defaultPolygon.geojson").getPath
     val metadataToExtractSeq              = Seq(Seq("RadioManager", "UID" ,"Optimiser", "CHUNK", "AREA_OP", "AREA_OWNER"),
                                             Seq("Postdist", "Postarea"))
     val magellanIndex                   = Seq(Some(10), None)
 
-    loadDefaultPolygonsTest(spark, defaultpolygonsPath, Some(metadataToExtractSeq), magellanIndex)
+    TestHelper.loadDefaultPolygonsTest(spark, defaultPolygonsPath, Some(metadataToExtractSeq), magellanIndex)
   }
 
-  test("loadDefaultPolygons test 3") {
-    val defaultpolygonsPath               = this.getClass.getClassLoader.getResource("geojson/defaultPolygon.geojson").getPath
+  test("loadDefaultPolygons with single metadata") {
+    val defaultPolygonsPath               = this.getClass.getClassLoader.getResource("geojson/defaultPolygon.geojson").getPath
     val metadataToExtractSeq              = Seq(Seq("RadioManager", "UID" ,"Optimiser", "CHUNK", "AREA_OP", "AREA_OWNER"))
     val magellanIndex                   = Seq(Some(10))
 
-    loadDefaultPolygonsTest(spark, defaultpolygonsPath, Some(metadataToExtractSeq), magellanIndex)
+    TestHelper.loadDefaultPolygonsTest(spark, defaultPolygonsPath, Some(metadataToExtractSeq), magellanIndex)
+  }
+
+  test("loadDefaultPolygons test default parameters") {
+    val defaultPolygonsPath               = this.getClass.getClassLoader.getResource("geojson/defaultPolygon.geojson").getPath
+
+    TestHelper.loadDefaultPolygonsTest(spark, defaultPolygonsPath)
   }
 
   test("unionOfPolygonsDf test1") {
@@ -259,7 +221,7 @@ class CoordinatesUtilsSuite extends FunSuite with DataFrameSuiteBase {
     val polygonsPath2                   = this.getClass.getClassLoader.getResource("geojson/postdist_gps_sample.geojson").getPath
     val polygonsPath3                   = this.getClass.getClassLoader.getResource("geojson/districts_gps_sample.geojson").getPath
 
-    val polygonsPathSeq                 = Seq(polygonsPath1, polygonsPath2, polygonsPath1)
+    val polygonsPathSeq                 = Seq(polygonsPath1, polygonsPath2, polygonsPath3)
     val metadataToExtractSeq            = Seq(Seq("RadioManager", "UID" ,"Optimiser", "CHUNK", "AREA_OP", "AREA_OWNER"),
                                           Seq("Postdist", "Postarea"),
                                           Seq("name"))
