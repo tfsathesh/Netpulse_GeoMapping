@@ -12,10 +12,10 @@ class CoordinatesUtilsSuite extends FunSuite with DataFrameSuiteBase {
     val polygonsPath = this.getClass.getClassLoader.getResource("geojson/beacon_gps_sample.geojson").getPath
     val magellanIndex = 10
 
-    val polygonsDf = CoordinatesUtils.loadPolygons(spark, polygonsPath, None, Some(magellanIndex))
+    val actualDf = CoordinatesUtils.loadPolygons(spark, polygonsPath, None, Some(magellanIndex))
 
-    assert(polygonsDf.count >= 1)
-    assertTrue(polygonsDf.columns.toSeq.contains("index"))
+    assert(actualDf.count >= 1)
+    assertTrue(actualDf.columns.toSeq.contains("index"))
 
     val expectedDf = spark.read
       .format("magellan")
@@ -24,7 +24,7 @@ class CoordinatesUtilsSuite extends FunSuite with DataFrameSuiteBase {
       .option("magellan.index.precision", magellanIndex.toString)
       .load(polygonsPath)
 
-    assertDataFrameApproximateEquals(expectedDf, polygonsDf, 0.005)
+    assertDataFrameApproximateEquals(expectedDf, actualDf, 0.005)
   }
 
   test("loadPolygons test 1") {
@@ -40,7 +40,7 @@ class CoordinatesUtilsSuite extends FunSuite with DataFrameSuiteBase {
     assertTrue(polygonsDf.columns.toSeq.contains("index"))
   }
 
-  test("loadPolygons test 2") {
+  test("loadPolygons Index none") {
 
     val polygonsPath = this.getClass.getClassLoader.getResource("geojson/postdist_gps_sample.geojson").getPath
     val metadataToFilter = Seq("Postdist", "Postarea")
@@ -103,12 +103,10 @@ class CoordinatesUtilsSuite extends FunSuite with DataFrameSuiteBase {
     assertTrue(polygonsDf.columns.toSeq.containsSlice(metadataToFilter))
 
     // Check incorrect metadata value is "-"
-    //TODO
-    //assertTrue(polygonsDf.select(polygonsDf("Postdist1")).collect.forall(_ === "-"))
+    assertTrue(polygonsDf.select(polygonsDf("Postdist1")).collect.map(r => r(0)).forall(_ == "-"))
 
     // Check correct metadata value is not "-"
-    //TODO
-    //assertTrue(polygonsDf.select(polygonsDf("Postarea")).collect.forall(_ != "-"))
+    assertTrue(polygonsDf.select(polygonsDf("Postarea")).collect.map(r => r(0)).forall(_ != "-"))
   }
 
 
