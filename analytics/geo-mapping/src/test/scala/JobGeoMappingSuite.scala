@@ -2,7 +2,6 @@ import com.holdenkarau.spark.testing._
 import org.scalatest.FunSuite
 import org.apache.spark.sql.types._
 import org.apache.spark.sql.Row
-import org.rogach.scallop.exceptions.ScallopException
 
 class JobGeoMappingSuite extends FunSuite with DataFrameSuiteBase {
 

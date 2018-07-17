@@ -5,11 +5,10 @@ import org.rogach.scallop.exceptions.ScallopException
 
 object TestHelper extends FunSuite with DataFrameSuiteBase {
 
-  /**
+  /** This function used to test error messages for given command line arguments.
     *
-    *
-    * @param
-    * @return
+    * @param args command line arguments for testing.
+    * @param expectedErrorMessage expected error message for given command line arguments.
     */
   def clOptsErrorTest(args: Array[String], expectedErrorMessage: String): Unit ={
     val clopts = new JobGeoMapping.CLOpts(args) {
@@ -20,11 +19,12 @@ object TestHelper extends FunSuite with DataFrameSuiteBase {
     }
   }
 
-  /**
+  /** This function
     *
-    *
-    * @param
-    * @return
+    * @param spark Spark session.
+    * @param pathSeq Polygons set paths.
+    * @param metadataToExtractSeq metadata to extract from polygons set.
+    * @param magellanIndex  Index to use during polygons load.
     */
   def loadMultiPolygonsTest(spark:SparkSession,
                             pathSeq:Seq[String],
@@ -68,9 +68,10 @@ object TestHelper extends FunSuite with DataFrameSuiteBase {
 
   /**
     *
-    *
-    * @param
-    * @return
+    * @param spark
+    * @param path
+    * @param metadataToExtractSeq
+    * @param magellanIndex
     */
   def loadDefaultPolygonsTest(spark:SparkSession,
                               path:String,

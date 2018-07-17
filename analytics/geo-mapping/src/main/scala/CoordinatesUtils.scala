@@ -21,6 +21,15 @@ object CoordinatesUtils {
 
     val magellanPointUDF    = udf{ (x:Double,y:Double) => Point(x,y) } //coords.toString } //Point(coord(0),coord(1)) }
 
+    /** This function converts coordinates from BNG to EGS84. Converted coordinates will be added as
+      * new columns (lat and lon).
+      *
+      * @param df     Data frame with BNG coordinates.
+      * @param xCol   x-centroid columns name
+      * @param yCol   y-centroid columns name
+      *
+      * @return Returns data frame with lat and lon columns.
+      */
     def toGPS(df:DataFrame, xCol:String, yCol:String) : DataFrame = {
           df.withColumn("_bng2wgs84Buf",
               CoordinatesUtils.bng2wgs84UDF(
@@ -32,6 +41,15 @@ object CoordinatesUtils {
           .drop("_bng2wgs84Buf")
     }
 
+  /** This function loads polygons from input file. GeoJson and shape files are supported.
+    *
+    * @param spark              Spark Session.
+    * @param path               Path to load polygons set.
+    * @param metadataToExtract  Metadata to extract from polygons.
+    * @param index              Magellan index.
+    *
+    * @return Return data frame with loaded polygons and corresponding metadata.
+    */
     def loadPolygons(
       spark:SparkSession, 
       path:String, 
@@ -66,11 +84,15 @@ object CoordinatesUtils {
         df
     }
 
-    /**
+    /** This function loads one or more polygons sets. This function calls loadPolygons function
+      * repeatedly to load polygons and returns sequence of loaded data frames.
       *
+      * @param spark                  Spark Session.
+      * @param pathSeq                Path(s) to load polygons set.
+      * @param metadataToExtractSeq   Metadata to extract from polygons.
+      * @param indexSeq               Magellan index(s).
       *
-      * @param
-      * @return
+      * @return Returns sequence of loaded data frames.
       */
     def loadMultiPolygons(spark:SparkSession,
                           pathSeq:Seq[String],
@@ -103,11 +125,15 @@ object CoordinatesUtils {
       polygonsDfs
     }
 
-    /**
+    /** This function loads default polygons set. Based on the metadata information
+      * same polygons set will be loaded but different metadata information.
       *
+      * @param spark                  Spark Session
+      * @param defaultPolygonsPath    Default polygons set path
+      * @param metadataToExtractSeq   List of metadata to extract from polygons set
+      * @param indexSeq               Magellan index
       *
-      * @param
-      * @return
+      * @return returns sequence of loaded data frames.
       */
     def loadDefaultPolygons(spark:SparkSession,
                            defaultPolygonsPath:String,
@@ -127,11 +153,11 @@ object CoordinatesUtils {
       polygonsDfs
     }
 
-    /**
+    /** This function combines two sequence of polygons set.
       *
-      *
-      * @param
-      * @return
+      * @param  polygonsDfSeq         Normal polygons set(s)
+      * @param  defaultPolygonsDfSeq  Default polygons set(s)
+      * @return Returns union of data frame.
       */
     def unionOfPolygonsDf(polygonsDfSeq : Seq[DataFrame], defaultPolygonsDfSeq: Seq[DataFrame]): Seq[DataFrame] = {
       var unionDfs = Seq[DataFrame]()

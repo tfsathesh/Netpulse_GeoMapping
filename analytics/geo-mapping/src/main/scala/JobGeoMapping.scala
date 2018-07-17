@@ -3,17 +3,22 @@ import org.apache.spark.sql.{SparkSession, DataFrame, SaveMode}
 import org.apache.spark.sql.functions.{udf, lit, col, concat_ws, collect_list, expr, size, split}
 import org.rogach.scallop._
 
-import magellan.Point
-
 object JobGeoMapping {
 
   val MAGELLAN_INDEX_SEPARATOR      = ","
   val METADATA_SEPARATOR_1          = "::"
   val METADATA_SEPARATOR            = ","
   val POLYGONS_PATH_SEPARATOR       = "::"
-  // metadata used in default polygons. This can be optional scallop parameter? need to discuss with reviewer.
+  // metadata used in default polygons. TODO: This can be optional scallop parameter? need to discuss with reviewer.
   val DEFAULT_POLYGONS_METADATA     = ""
 
+  /** This function builds spark session.
+    *
+    * @param name           App name
+    * @param consoleEcho    Flag used to echo spark conf parameters
+    *
+    * @return Returns spark session.
+    */
     def getSparkSession(name:String, consoleEcho:Boolean = true) : SparkSession = {
         val spark = SparkSession
           .builder()
@@ -31,12 +36,13 @@ object JobGeoMapping {
         spark
     }
 
-    /**
-      *
-      *
-      * @param
-      * @return
-      */
+  /**
+    *
+    * @param metadataInString
+    * @param metadataToRemove
+    * @param metadataSeparator
+    * @return
+    */
     def removeDefaultMetadata(metadataInString: String, metadataToRemove: String, metadataSeparator: String) : String = {
       val metadataSeq = metadataInString.split(metadataSeparator)
       if(metadataSeq.length > 1) {
@@ -46,11 +52,19 @@ object JobGeoMapping {
         metadataSeq.mkString(metadataSeparator)
     }
 
-    /**
+    /** This function consolidates metadata as list with separator and also adds count column.
       *
+      * If default polygons set used as part of points labelling then default metadata exist for each point i.e.
+      * Points within the polygons and also points outside polygons will have default metadata. So this function
+      * removes the default metadata for the points within the polygons only.
       *
-      * @param
-      * @return
+      * @param df                   Data frame to consolidate metadata.
+      * @param groupByCols          Sequence of columns to be used for group by.
+      * @param aggregateCols        Sequence of columns to be used for aggregate operation.
+      * @param metadataSeparator    Collects metadata as list separated by metadataSeparator
+      * @param defaultMetadata      Default metadata string.
+      *
+      * @return Returns consolidated data frame.
       */
     def consolidateMetadata(
           df: DataFrame,
@@ -59,6 +73,9 @@ object JobGeoMapping {
           metadataSeparator: String,
           defaultMetadata: Option[String]):
     DataFrame = {
+      /** collect_list and concat_ws returns Column type (org.apache.spark.sql.Column).
+        * aggCols is a sequence of columns carrying the processing to be applied after the groupBy.
+        * */
       val aggCols = aggregateCols.map(colName => expr(s"""concat_ws(\"$metadataSeparator\",collect_list($colName))""").alias(colName))
       var aggregatedDf =  df
         .groupBy (groupByCols.map(name => col(name)):_*)
@@ -71,11 +88,27 @@ object JobGeoMapping {
           aggregatedDf = aggregatedDf.withColumn(colName, removeDefaultMetadataUDF(col(colName)))
       }
 
-      // Need to count after removing default metadata.
-      // We only need to count one metadata since all metadata count will be same for given polygons set.
+      /** Need to count after removing default metadata.
+      We only need to count one metadata since all metadata count will be same for given polygons set.
+      */
       aggregatedDf.withColumn(aggregateCols(0).toString + "_Count", size(split(col(aggregateCols(0)), metadataSeparator)))
     }
 
+
+  /**
+    *
+    * @param df
+    * @param xCol
+    * @param yCol
+    * @param toGPS
+    * @param dfPolygons
+    * @param polygonCol
+    * @param metadataCols
+    * @param magellanIndex
+    * @param outPartitions
+    * @param outPath
+    * @return
+    */
     def runJob(
       df:DataFrame, 
       xCol:String,
@@ -134,12 +167,22 @@ object JobGeoMapping {
         dfPointsLabeled
     }
 
-    /**
-      * TBD
-      *
-      * @param
-      * @return
-      */
+  /**
+    *
+    * @param spark
+    * @param dfIn
+    * @param xColName
+    * @param yColName
+    * @param toGPS
+    * @param dfMultiPolygons
+    * @param polygonCol
+    * @param metadataColsSeq
+    * @param magellanIndex
+    * @param aggregateMetadata
+    * @param outPartitions
+    * @param outPath
+    * @return
+    */
     def runMultiPolygonJob(
       spark: SparkSession,
       dfIn:DataFrame,
@@ -206,7 +249,6 @@ object JobGeoMapping {
         combinedDf
     }
 
-
     // Scallop config parameters
     class CLOpts(arguments: Seq[String]) extends ScallopConf(arguments) {
       val separator           = opt[String](name="separator", required = false, default=Some("\t"))
@@ -235,12 +277,12 @@ object JobGeoMapping {
       verify()
     }
 
-    /**
-      * TBD
-      *
-      * @param
-      * @return
-      */
+  /**
+    *
+    * @param index
+    * @param separator
+    * @return
+    */
     def convertStringIndexToIntSeq(index: String, separator: String) : Seq[Option[Int]] = {
       val magellanIndex = index.split(separator)
 

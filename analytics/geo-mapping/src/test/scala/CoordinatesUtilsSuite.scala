@@ -1,14 +1,13 @@
 import com.holdenkarau.spark.testing._
 import org.scalatest.FunSuite
-import org.apache.spark.sql.SparkSession
-import org.apache.spark.sql.{Row, DataFrame}
+import org.apache.spark.sql.Row
 import org.apache.spark.sql.types.StructType
 
 class CoordinatesUtilsSuite extends FunSuite with DataFrameSuiteBase {
   override implicit def reuseContextIfPossible: Boolean = true
   import spark.implicits._
 
-  test("loadPolygons test 0 ") {
+  test("loadPolygons without metadata ") {
     val polygonsPath = this.getClass.getClassLoader.getResource("geojson/beacon_gps_sample.geojson").getPath
     val magellanIndex = 10
 
@@ -27,7 +26,7 @@ class CoordinatesUtilsSuite extends FunSuite with DataFrameSuiteBase {
     assertDataFrameApproximateEquals(expectedDf, actualDf, 0.005)
   }
 
-  test("loadPolygons test 1") {
+  test("loadPolygons with metadata and index") {
 
     val polygonsPath = this.getClass.getClassLoader.getResource("geojson/beacon_gps_sample.geojson").getPath
     val metadataToFilter = Seq("RadioManager", "UID", "Optimiser", "CHUNK", "AREA_OP", "AREA_OWNER")
@@ -35,12 +34,28 @@ class CoordinatesUtilsSuite extends FunSuite with DataFrameSuiteBase {
 
     val polygonsDf = CoordinatesUtils.loadPolygons(spark, polygonsPath, Some(metadataToFilter), Some(magellanIndex))
 
+    // Verify polygons loaded and metadata columns exists.
     assert(polygonsDf.count >= 1)
     assertTrue(polygonsDf.columns.toSeq.containsSlice(metadataToFilter))
     assertTrue(polygonsDf.columns.toSeq.contains("index"))
+
+    // Verify metadata columns data is correct.
+    // Get metadata columns
+    val actualDf = polygonsDf.select(metadataToFilter.map(name => polygonsDf.col(name)): _*)
+
+    val expectedData = Seq(
+      Row("Radio_Mgr1", "120", "Optimiser1", "chunk_1", "Area_Op", "region1"),
+      Row("Radio_Mgr2", "213", "Optimiser2", "chunk_2", "op2", "region2")
+    )
+
+    val expectedDF = spark.createDataFrame(
+      spark.sparkContext.parallelize(expectedData),
+      StructType(actualDf.schema))
+
+    assertDataFrameEquals(expectedDF, actualDf)
   }
 
-  test("loadPolygons Index none") {
+  test("loadPolygons with index none") {
 
     val polygonsPath = this.getClass.getClassLoader.getResource("geojson/postdist_gps_sample.geojson").getPath
     val metadataToFilter = Seq("Postdist", "Postarea")
@@ -52,9 +67,24 @@ class CoordinatesUtilsSuite extends FunSuite with DataFrameSuiteBase {
 
     // Does not contain index column, which is only created when magellan index parameter is not None
     assertTrue(!polygonsDf.columns.toSeq.contains("index"))
+
+    //Verify metadata is extracted correctly when index applied.
+    val actualDf = polygonsDf.select(metadataToFilter.map(name => polygonsDf.col(name)): _*)
+
+    val expectedData = Seq(
+      Row("CH48", "CH"),
+      Row("CH48", "CH"),
+      Row("CH48", "CH")
+    )
+
+    val expectedDF = spark.createDataFrame(
+      spark.sparkContext.parallelize(expectedData),
+      StructType(actualDf.schema))
+
+    assertDataFrameEquals(expectedDF, actualDf)
   }
 
-  test("loadPolygons test 3") {
+  test("loadPolygons test") {
 
     val polygonsPath = this.getClass.getClassLoader.getResource("geojson/districts_gps_sample.geojson").getPath
     val metadataToFilter = Seq("name")
@@ -68,7 +98,7 @@ class CoordinatesUtilsSuite extends FunSuite with DataFrameSuiteBase {
 
   }
 
-  test("loadPolygons test 4 (metadata None)") {
+  test("loadPolygons test (metadata None)") {
 
     val polygonsPath = this.getClass.getClassLoader.getResource("geojson/districts_gps_sample.geojson").getPath
     val metadataToFilter = Seq("name")
@@ -92,7 +122,7 @@ class CoordinatesUtilsSuite extends FunSuite with DataFrameSuiteBase {
     }
   }
 
-  test("loadPolygons test 6 (Incorrect metadata)") {
+  test("loadPolygons test (Incorrect metadata)") {
 
     val polygonsPath = this.getClass.getClassLoader.getResource("geojson/postdist_gps_sample.geojson").getPath
     val metadataToFilter = Seq("Postdist1", "Postarea")
@@ -108,7 +138,6 @@ class CoordinatesUtilsSuite extends FunSuite with DataFrameSuiteBase {
     // Check correct metadata value is not "-"
     assertTrue(polygonsDf.select(polygonsDf("Postarea")).collect.map(r => r(0)).forall(_ != "-"))
   }
-
 
   test("loadMultiPolygons test") {
 
