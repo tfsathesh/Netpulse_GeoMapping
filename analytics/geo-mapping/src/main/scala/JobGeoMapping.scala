@@ -36,13 +36,7 @@ object JobGeoMapping {
         spark
     }
 
-  /**
-    *
-    * @param metadataInString
-    * @param metadataToRemove
-    * @param metadataSeparator
-    * @return
-    */
+
     def removeDefaultMetadata(metadataInString: String, metadataToRemove: String, metadataSeparator: String) : String = {
       val metadataSeq = metadataInString.split(metadataSeparator)
       if(metadataSeq.length > 1) {
@@ -95,19 +89,20 @@ object JobGeoMapping {
     }
 
 
-  /**
+  /** This functions runs magellan algorithm for given points and single polygons set.
     *
-    * @param df
-    * @param xCol
-    * @param yCol
-    * @param toGPS
-    * @param dfPolygons
-    * @param polygonCol
-    * @param metadataCols
-    * @param magellanIndex
-    * @param outPartitions
-    * @param outPath
-    * @return
+    * @param df               Points data frame
+    * @param xCol             Column name of x centroid or longitude
+    * @param yCol             Column name of y centroid or latitude
+    * @param toGPS            Coordinates will be converted to WGS84 if toGPS flag is true
+    * @param dfPolygons       Polygons set data frame
+    * @param polygonCol       Name of the polygons column. Default name is "polygon"
+    * @param metadataCols     Metadata to extract from polygons
+    * @param magellanIndex    Index for magellan algorithm
+    * @param outPartitions    Out partitions
+    * @param outPath          Output path to save results.
+    *
+    * @return Returns data frame with points labelled.
     */
     def runJob(
       df:DataFrame, 
@@ -167,21 +162,24 @@ object JobGeoMapping {
         dfPointsLabeled
     }
 
-  /**
+  /** This functions runs magellan algorithm for given points and polygons information. Algorithm can be
+    * run on either single or multiple polygons. Also it can consolidate multiple metadata information from
+    * all the input polygons into a single enriched table.
     *
-    * @param spark
-    * @param dfIn
-    * @param xColName
-    * @param yColName
-    * @param toGPS
-    * @param dfMultiPolygons
-    * @param polygonCol
-    * @param metadataColsSeq
-    * @param magellanIndex
-    * @param aggregateMetadata
-    * @param outPartitions
-    * @param outPath
-    * @return
+    * @param spark              Spark Session
+    * @param dfIn               Points data frame
+    * @param xColName           Column name of x centroid or longitude
+    * @param yColName           Column name of y centroid or latitude
+    * @param toGPS              Coordinates will be converted to WGS84 if toGPS flag is true
+    * @param dfMultiPolygons    Sequence of polygons set data frames
+    * @param polygonCol         Name of the polygons column. Default name is "polygon"
+    * @param metadataColsSeq    Metadata to extract from polygons
+    * @param magellanIndex      Index for magellan algorithm
+    * @param aggregateMetadata  Consolidates metadata if aggregateMetadata flag is true
+    * @param outPartitions      Out partitions
+    * @param outPath            Output path to save results.
+    *
+    * @return Returns data frame with points labelled.
     */
     def runMultiPolygonJob(
       spark: SparkSession,
@@ -249,7 +247,11 @@ object JobGeoMapping {
         combinedDf
     }
 
-    // Scallop config parameters
+  /** Scallop config parameters
+    *
+    * @constructor Create a new CLOpts with arguments.
+    * @param arguments
+    */
     class CLOpts(arguments: Seq[String]) extends ScallopConf(arguments) {
       val separator           = opt[String](name="separator", required = false, default=Some("\t"))
       val magellanIndex       = opt[String](name="magellan-index", required = false, default=Some(""))
@@ -277,11 +279,12 @@ object JobGeoMapping {
       verify()
     }
 
-  /**
+  /** This function converts string index to Int magellan index.
     *
-    * @param index
-    * @param separator
-    * @return
+    * @param index      Input string index with delimiter.
+    * @param separator  delimiter to extract index values
+    *
+    * @return Returns sequence of integer index values.
     */
     def convertStringIndexToIntSeq(index: String, separator: String) : Seq[Option[Int]] = {
       val magellanIndex = index.split(separator)

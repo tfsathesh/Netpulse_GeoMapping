@@ -153,7 +153,7 @@ class CoordinatesUtilsSuite extends FunSuite with DataFrameSuiteBase {
     TestHelper.loadMultiPolygonsTest(spark, multiPolygonsPath, Some(metadataToExtractSeq), magellanIndex)
   }
 
-  test("loadMultiPolygons (single path)") {
+  test("loadMultiPolygons single path)") {
 
     val polygonsPath1                   = this.getClass.getClassLoader.getResource("geojson/beacon_gps_sample.geojson").getPath
     val multiPolygonsPath               = Seq(polygonsPath1)
@@ -243,7 +243,7 @@ class CoordinatesUtilsSuite extends FunSuite with DataFrameSuiteBase {
     TestHelper.loadDefaultPolygonsTest(spark, defaultPolygonsPath)
   }
 
-  test("unionOfPolygonsDf test1") {
+  test("unionOfPolygonsDf test") {
     val polygonsPath1                   = this.getClass.getClassLoader.getResource("geojson/beacon_gps_sample.geojson").getPath
     val polygonsPath2                   = this.getClass.getClassLoader.getResource("geojson/postdist_gps_sample.geojson").getPath
     val polygonsPath3                   = this.getClass.getClassLoader.getResource("geojson/districts_gps_sample.geojson").getPath

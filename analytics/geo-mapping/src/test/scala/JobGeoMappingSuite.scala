@@ -173,7 +173,6 @@ class JobGeoMappingSuite extends FunSuite with DataFrameSuiteBase {
     // Sort to keep the order (needed for data frame comparision)
     actualDf = actualDf.sort("Name")
 
-    //TODO: Do we need to have expected schema as well?
     val expectedData = Seq(
       Row("User1", 53.350, -3.141, "120,125,130", "Name 1,Name 3,Name 1", 3),
       Row("User2", 53.373, -3.143, "213,220", "Name 2,Name 2", 2)
