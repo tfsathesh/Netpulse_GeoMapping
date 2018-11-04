@@ -1,6 +1,6 @@
 import org.apache.spark.sql.magellan.dsl.expressions._
 import org.apache.spark.sql.{SparkSession, DataFrame, SaveMode}
-import org.apache.spark.sql.functions.{udf, lit, col, concat_ws, collect_list, expr, size, split}
+import org.apache.spark.sql.functions.{udf, lit, col, concat_ws, collect_list, expr, size, split,when,broadcast}
 import org.rogach.scallop._
 
 object JobGeoMapping {
@@ -12,6 +12,9 @@ object JobGeoMapping {
   // metadata used in default polygons. TODO: This can be optional scallop parameter? need to discuss with reviewer.
   val DEFAULT_POLYGONS_METADATA     = ""
 
+  //******* Logging need to be configured via log4j.properties
+  //******* CLOpts in different class
+  //******* Constanst in separate class
   /** This function builds spark session.
     *
     * @param name           App name
@@ -24,8 +27,11 @@ object JobGeoMapping {
           .builder()
           .appName(name)
           .config("spark.io.compression.codec", "lz4")
-          .config("spark.executor.cores", "3")
+          .config("spark.executor.cores", "3")   //********* this needs to be passed as spark submit conf
           .getOrCreate()
+
+     //********** NUM_EXECUTORS=50    Depending on machine
+     //********** EXECUTOR_MEMORY=5G  Depending on machine
 
         // For implicit conversions
         import spark.implicits._
@@ -105,11 +111,11 @@ object JobGeoMapping {
     * @return Returns data frame with points labelled.
     */
     def runJob(
-      df:DataFrame, 
+      df:DataFrame,
       xCol:String,
       yCol:String,
       toGPS:Boolean = true,
-      dfPolygons:DataFrame, 
+      dfPolygons:DataFrame,
       polygonCol:String = "polygon",
       metadataCols:Option[Seq[String]] = None,
       magellanIndex:Option[Int] = None,
@@ -119,9 +125,9 @@ object JobGeoMapping {
 
         val MAGELLANPOINT_COL = "_magellanPoint"
 
-        var cols = df.columns.toSeq 
+        var cols = df.columns.toSeq
 
-        val dfIn = 
+        val dfIn =
           if (toGPS) {
               cols = cols ++ Seq("lat", "lon")
               CoordinatesUtils.toGPS(df, xCol, yCol)
@@ -132,8 +138,8 @@ object JobGeoMapping {
         if (!metadataCols.isEmpty)
             cols = cols ++ metadataCols.get
 
-        var dfPoints = 
-          if (toGPS) 
+        var dfPoints =
+          if (toGPS)
               dfIn.withColumn(MAGELLANPOINT_COL, CoordinatesUtils.magellanPointUDF(dfIn.col("lon"), dfIn.col("lat")))
           else
               dfIn.withColumn(MAGELLANPOINT_COL, CoordinatesUtils.magellanPointUDF(dfIn.col(xCol), dfIn.col(yCol)))
@@ -144,22 +150,38 @@ object JobGeoMapping {
         }
 
         var dfPointsLabeled = dfPoints
-          .join(dfPolygons)
-          .where(dfPoints.col(MAGELLANPOINT_COL) within dfPolygons.col(polygonCol))
+          .join(broadcast(dfPolygons),
+          (dfPoints.col(MAGELLANPOINT_COL) within dfPolygons.col(polygonCol)),"left_outer")
           .select(cols.map(name => col(name)):_*)
+        //  .withColumn("GeoName", when(dfPolygons("tcity15nm").isNull, "NoMatch").otherwise(dfPolygons("tcity15nm")))
+
+
+         var dfPointLabeledWithUnmatch
+           = metadataCols.get.foldLeft(dfPointsLabeled) {
+           (df, metaColName) =>
+             df.withColumn(metaColName,
+               when(col(metaColName).isNull,"NoMatch")
+                 .otherwise(col(metaColName)))
+         }
+
+
+      //Not required in final version
+      //dfPointLabeledWithUnmatch.groupBy("tcity15nm","tcity15cd").count().show()
+      //dfPointsLabeled.printSchema()
+
 
         if (!outPartitions.isEmpty)
             dfPointsLabeled = dfPointsLabeled.repartition(outPartitions.get)
 
         if (outPath.isEmpty == false)
-            dfPointsLabeled.write
+          dfPointLabeledWithUnmatch.write
               .mode(SaveMode.Overwrite)
               .format("com.databricks.spark.csv")
               .option("delimiter", "\t")
               .option("header", "false")
               .csv(outPath.get)
 
-        dfPointsLabeled
+      dfPointLabeledWithUnmatch
     }
 
   /** This functions runs magellan algorithm for given points and polygons information. Algorithm can be
@@ -229,7 +251,7 @@ object JobGeoMapping {
 
           // Extra variable used, just for proper in and out naming purpose.
           inputDf       = resultDf
-          combinedDf    = resultDf
+          combinedDf    = resultDf         //**********Not sure where we are combining multiple run outcomes
           groupByCols   = resultDf.columns.toSeq
         }
 
@@ -269,6 +291,9 @@ object JobGeoMapping {
         val indexCount    = index.split(MAGELLAN_INDEX_SEPARATOR).length
         val pathsCount    = paths.split(POLYGONS_PATH_SEPARATOR).length
         val metadataCount = metadata.split(METADATA_SEPARATOR_1).length
+
+ //Not required in final version
+        //println(indexCount+" "+pathsCount+" "+metadataCount)
 
         if( (indexCount == pathsCount) && (pathsCount == metadataCount) )
           Right(Unit)
@@ -318,13 +343,13 @@ object JobGeoMapping {
 
         // metadataToFilter type is Option[Seq[String]]. Each element is separated by ",".
         // This need to be converted to Seq[Seq[String]]
-        val metadataToFilterSeq = for{
+        val metadataToFilterSeq: Seq[Seq[String]] = for{
                                       metaData <- metadataToFilter.getOrElse(Seq(""))
                                   } yield  metaData.split(METADATA_SEPARATOR).toSeq
 
         val tmp = coordsInfo.split("::")
-        val xColName   = "_c%s".format(tmp(0))
-        val yColName   = "_c%s".format(tmp(1))
+        val xColName   = "_c%s".format(tmp(0))    //_c3   //********* We may need to cast this manually
+        val yColName   = "_c%s".format(tmp(1))    //_c4   //********* We may need to cast this manually
         val coordsPath  = tmp(2)
 
         val spark = getSparkSession("JobGeoMapping")
@@ -334,13 +359,14 @@ object JobGeoMapping {
           .format("com.databricks.spark.csv")
           .option("delimiter", separator)
           .option("header", "false")
-          .csv(coordsPath) 
+          .csv(coordsPath)
 
-        val dfIn2 = 
+        val dfIn2 =
           if (inPartitions > 0)
-              dfIn.repartition(inPartitions)
+              dfIn.repartition(inPartitions)     //******** can we move this to read step
           else
               dfIn
+
 
         var polygonsDfSeq = CoordinatesUtils.loadMultiPolygons(spark, polygonsPath.get, Some(metadataToFilterSeq), magellanIndex)
 

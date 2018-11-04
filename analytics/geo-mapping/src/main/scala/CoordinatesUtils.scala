@@ -6,168 +6,165 @@ import magellan.Point
 import org.apache.spark.sql.types.{DoubleType}
 import org.apache.spark.sql.magellan.dsl.expressions._
 
- 
+
 object CoordinatesUtils {
-    
-    val crsBNG      = CRS.forCode("EPSG:27700")  // British National Grid
-    val crsWGS84    = CRS.forCode("EPSG:4326")   // GPS
-    val transformBNGtoWGS84 = CRS.findOperation(crsBNG, crsWGS84, null).getMathTransform
 
-    def bng2wgs84(x:Double, y:Double) : Seq[Double] = {
-        transformBNGtoWGS84.transform(new DirectPosition2D(x,y), null).getCoordinate
-    }
+  val crsBNG = CRS.forCode("EPSG:27700") // British National Grid
+  val crsWGS84 = CRS.forCode("EPSG:4326") // GPS
+  val transformBNGtoWGS84 = CRS.findOperation(crsBNG, crsWGS84, null).getMathTransform
 
-    val bng2wgs84UDF        = udf{ (x:Double,y:Double) => bng2wgs84(x, y) }
+  def bng2wgs84(x: Double, y: Double): Seq[Double] = {
+    transformBNGtoWGS84.transform(new DirectPosition2D(x, y), null).getCoordinate
+  }
 
-    val magellanPointUDF    = udf{ (x:Double,y:Double) => Point(x,y) } //coords.toString } //Point(coord(0),coord(1)) }
+  val bng2wgs84UDF = udf { (x: Double, y: Double) => bng2wgs84(x, y) }
 
-    /** This function converts coordinates from BNG to EGS84. Converted coordinates will be added as
-      * new columns (lat and lon).
-      *
-      * @param df     Data frame with BNG coordinates.
-      * @param xCol   x-centroid columns name
-      * @param yCol   y-centroid columns name
-      *
-      * @return Returns data frame with lat and lon columns.
-      */
-    def toGPS(df:DataFrame, xCol:String, yCol:String) : DataFrame = {
-          df.withColumn("_bng2wgs84Buf",
-              CoordinatesUtils.bng2wgs84UDF(
-                df.col(xCol).cast(DoubleType),
-                df.col(yCol).cast(DoubleType)
-          ))
-          .withColumn("lat", col("_bng2wgs84Buf").getItem(0))
-          .withColumn("lon", col("_bng2wgs84Buf").getItem(1))
-          .drop("_bng2wgs84Buf")
-    }
+  val magellanPointUDF = udf { (x: Double, y: Double) => Point(x, y) } //coords.toString } //Point(coord(0),coord(1)) }
+
+  /** This function converts coordinates from BNG to EGS84. Converted coordinates will be added as
+    * new columns (lat and lon).
+    *
+    * @param df   Data frame with BNG coordinates.
+    * @param xCol x-centroid columns name
+    * @param yCol y-centroid columns name
+    * @return Returns data frame with lat and lon columns.
+    */
+  def toGPS(df: DataFrame, xCol: String, yCol: String): DataFrame = {
+    df.withColumn("_bng2wgs84Buf",
+      CoordinatesUtils.bng2wgs84UDF(
+        df.col(xCol).cast(DoubleType),
+        df.col(yCol).cast(DoubleType)
+      ))
+      .withColumn("lat", col("_bng2wgs84Buf").getItem(0))
+      .withColumn("lon", col("_bng2wgs84Buf").getItem(1))
+      .drop("_bng2wgs84Buf")
+  }
 
   /** This function loads polygons from input file. GeoJson and shape files are supported.
     *
-    * @param spark              Spark Session.
-    * @param path               Path to load polygons set.
-    * @param metadataToExtract  Metadata to extract from polygons.
-    * @param index              Magellan index.
-    *
+    * @param spark             Spark Session.
+    * @param path              Path to load polygons set.
+    * @param metadataToExtract Metadata to extract from polygons.
+    * @param index             Magellan index.
     * @return Return data frame with loaded polygons and corresponding metadata.
     */
-    def loadPolygons(
-      spark:SparkSession, 
-      path:String, 
-      metadataToExtract:Option[Seq[String]] = None,
-      index:Option[Int] = None
-    ) : DataFrame = {
-        
-        var dfPartial = spark.read.format("magellan")
+  def loadPolygons(
+                    spark: SparkSession,
+                    path: String,
+                    metadataToExtract: Option[Seq[String]] = None,
+                    index: Option[Int] = None
+                  ): DataFrame = {
 
-        if (path.endsWith("json"))
-            dfPartial = dfPartial.option("type", "geojson")
+    var dfPartial = spark.read.format("magellan")
 
-        if (!index.isEmpty)
-              dfPartial
-                .option("magellan.index", "true")
-                .option("magellan.index.precision", index.get.toString)
+    if (path.endsWith("json"))
+      dfPartial = dfPartial.option("type", "geojson")
 
-        var df = dfPartial.load(path)
+    if (!index.isEmpty)
+      dfPartial
+        .option("magellan.index", "true")
+        .option("magellan.index.precision", index.get.toString)
 
-        val metadataCol = "metadata"
+    var df = dfPartial.load(path)
 
-        if (!metadataToExtract.isEmpty) {
-            val getMetadataValue = udf( (hash:Map[String,String], key:String) => hash.getOrElse(key, "-"))
-            metadataToExtract.get.foreach{ key =>
-               df = df.withColumn(key, getMetadataValue(col(metadataCol), lit(key))) 
-            }
-          df = df.drop(col(metadataCol))
-        }
+    val metadataCol: String = "metadata"
 
-        if (!index.isEmpty)
-            df = df.withColumn("index", col("polygon") index index.get)
-        df
-    }
-
-    /** This function loads one or more polygons sets. This function calls loadPolygons function
-      * repeatedly to load polygons and returns sequence of loaded data frames.
-      *
-      * @param spark                  Spark Session.
-      * @param pathSeq                Path(s) to load polygons set.
-      * @param metadataToExtractSeq   Metadata to extract from polygons.
-      * @param indexSeq               Magellan index(s).
-      *
-      * @return Returns sequence of loaded data frames.
-      */
-    def loadMultiPolygons(spark:SparkSession,
-                          pathSeq:Seq[String],
-                          metadataToExtractSeq:Option[Seq[Seq[String]]] = None,
-                          indexSeq:Seq[Option[Int]] = Seq(None)
-                         )  : Seq[DataFrame] = {
-
-      var polygonsDfs = Seq[DataFrame]()
-
-      // If metadata is default values then convert it to Seq of defaults based on number of polygons sets.
-      val metadataSeqIn:Seq[Seq[String]] = if(metadataToExtractSeq.isEmpty)
-         Seq.fill(pathSeq.length)(Seq(""))
-      else
-        metadataToExtractSeq.get
-
-      // If index is default values then convert it to Seq of defaults based on number of polygons sets.
-      val indexSeqIn:Seq[Option[Int]] = if(indexSeq.length == 1 && indexSeq(0).isEmpty)
-        Seq.fill(pathSeq.length)(None)
-      else
-        indexSeq
-
-      //
-      for((polygonsPath, metadataToExtract, index) <- (pathSeq, metadataSeqIn, indexSeqIn).zipped.toSeq) {
-
-        val df = CoordinatesUtils.loadPolygons(spark, polygonsPath, Some(metadataToExtract), index)
-
-        polygonsDfs = polygonsDfs ++ Seq(df)
+    if (!metadataToExtract.isEmpty) {
+      val getMetadataValue = udf((hash: Map[String, String], key: String) => hash.getOrElse(key, "-"))
+      metadataToExtract.get.foreach { key =>
+        df = df.withColumn(key, getMetadataValue(col(metadataCol), lit(key)))
       }
-
-      polygonsDfs
+      df = df.drop(col(metadataCol))
     }
 
-    /** This function loads default polygons set. Based on the metadata information
-      * same polygons set will be loaded but different metadata information.
-      *
-      * @param spark                  Spark Session
-      * @param defaultPolygonsPath    Default polygons set path
-      * @param metadataToExtractSeq   List of metadata to extract from polygons set
-      * @param indexSeq               Magellan index
-      *
-      * @return returns sequence of loaded data frames.
-      */
-    def loadDefaultPolygons(spark:SparkSession,
-                           defaultPolygonsPath:String,
-                           metadataToExtractSeq:Option[Seq[Seq[String]]] = None,
-                           indexSeq:Seq[Option[Int]] = Seq(None)
-                         )  : Seq[DataFrame] = {
+    //df.select("index", "polygon").show(false)
+    if (!index.isEmpty)
+      df = df.withColumn("index", col("polygon") index index.get)
+    //df.select("index","polygon").show(false)
+    df
+  }
 
-      var polygonsDfs = Seq[DataFrame]()
+  /** This function loads one or more polygons sets. This function calls loadPolygons function
+    * repeatedly to load polygons and returns sequence of loaded data frames.
+    *
+    * @param spark                Spark Session.
+    * @param pathSeq              Path(s) to load polygons set.
+    * @param metadataToExtractSeq Metadata to extract from polygons.
+    * @param indexSeq             Magellan index(s).
+    * @return Returns sequence of loaded data frames.
+    */
+  def loadMultiPolygons(spark: SparkSession,
+                        pathSeq: Seq[String],
+                        metadataToExtractSeq: Option[Seq[Seq[String]]] = None,
+                        indexSeq: Seq[Option[Int]] = Seq(None)
+                       ): Seq[DataFrame] = {
 
-      for((metadataToExtract, index) <- (metadataToExtractSeq.getOrElse(Seq(Seq(""))), indexSeq).zipped.toSeq) {
+    var polygonsDfs = Seq[DataFrame]()
 
-        val df = CoordinatesUtils.loadPolygons(spark, defaultPolygonsPath, Some(metadataToExtract), index)
+    // If metadata is default values then convert it to Seq of defaults based on number of polygons sets.
+    val metadataSeqIn: Seq[Seq[String]] = if (metadataToExtractSeq.isEmpty)
+      Seq.fill(pathSeq.length)(Seq(""))
+    else
+      metadataToExtractSeq.get
 
-        polygonsDfs = polygonsDfs ++ Seq(df)
-      }
+    // If index is default values then convert it to Seq of defaults based on number of polygons sets.
+    val indexSeqIn: Seq[Option[Int]] = if (indexSeq.length == 1 && indexSeq(0).isEmpty)
+      Seq.fill(pathSeq.length)(None)
+    else
+      indexSeq
 
-      polygonsDfs
+    //
+    for ((polygonsPath, metadataToExtract, index) <- (pathSeq, metadataSeqIn, indexSeqIn).zipped.toSeq) {
+      val df = CoordinatesUtils.loadPolygons(spark, polygonsPath, Some(metadataToExtract), index)
+      polygonsDfs = polygonsDfs ++ Seq(df)
     }
 
-    /** This function combines two sequence of polygons set.
-      *
-      * @param  polygonsDfSeq         Normal polygons set(s)
-      * @param  defaultPolygonsDfSeq  Default polygons set(s)
-      * @return Returns union of data frame.
-      */
-    def unionOfPolygonsDf(polygonsDfSeq : Seq[DataFrame], defaultPolygonsDfSeq: Seq[DataFrame]): Seq[DataFrame] = {
-      var unionDfs = Seq[DataFrame]()
+    polygonsDfs
 
-      for((polygonsDf, defaultPolygonsDf) <- (polygonsDfSeq, defaultPolygonsDfSeq).zipped.toSeq) {
-        val resDf = polygonsDf.union(defaultPolygonsDf)
+  }
 
-        unionDfs = unionDfs ++ Seq(resDf)
-      }
+  /** This function loads default polygons set. Based on the metadata information
+    * same polygons set will be loaded but different metadata information.
+    *
+    * @param spark                Spark Session
+    * @param defaultPolygonsPath  Default polygons set path
+    * @param metadataToExtractSeq List of metadata to extract from polygons set
+    * @param indexSeq             Magellan index
+    * @return returns sequence of loaded data frames.
+    */
+  def loadDefaultPolygons(spark: SparkSession,
+                          defaultPolygonsPath: String,
+                          metadataToExtractSeq: Option[Seq[Seq[String]]] = None,
+                          indexSeq: Seq[Option[Int]] = Seq(None)
+                         ): Seq[DataFrame] = {
 
-      unionDfs
+    var polygonsDfs = Seq[DataFrame]()
+
+    for ((metadataToExtract, index) <- (metadataToExtractSeq.getOrElse(Seq(Seq(""))), indexSeq).zipped.toSeq) {
+
+      val df = CoordinatesUtils.loadPolygons(spark, defaultPolygonsPath, Some(metadataToExtract), index)
+
+      polygonsDfs = polygonsDfs ++ Seq(df)
     }
+
+    polygonsDfs
+  }
+
+  /** This function combines two sequence of polygons set.
+    *
+    * @param  polygonsDfSeq        Normal polygons set(s)
+    * @param  defaultPolygonsDfSeq Default polygons set(s)
+    * @return Returns union of data frame.
+    */
+  def unionOfPolygonsDf(polygonsDfSeq: Seq[DataFrame], defaultPolygonsDfSeq: Seq[DataFrame]): Seq[DataFrame] = {
+    var unionDfs = Seq[DataFrame]()
+
+    for ((polygonsDf, defaultPolygonsDf) <- (polygonsDfSeq, defaultPolygonsDfSeq).zipped.toSeq) {
+      val resDf = polygonsDf.union(defaultPolygonsDf)
+
+      unionDfs = unionDfs ++ Seq(resDf)
+    }
+
+    unionDfs
+  }
 }
