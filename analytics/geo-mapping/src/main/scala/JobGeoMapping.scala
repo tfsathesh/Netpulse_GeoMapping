@@ -293,7 +293,7 @@ object JobGeoMapping {
         val metadataCount = metadata.split(METADATA_SEPARATOR_1).length
 
  //Not required in final version
-        //println(indexCount+" "+pathsCount+" "+metadataCount)
+        println(indexCount+" "+pathsCount+" "+metadataCount)
 
         if( (indexCount == pathsCount) && (pathsCount == metadataCount) )
           Right(Unit)

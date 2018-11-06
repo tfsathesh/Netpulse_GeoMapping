@@ -77,10 +77,10 @@ object CoordinatesUtils {
       df = df.drop(col(metadataCol))
     }
 
-    //df.select("index", "polygon").show(false)
+    df.select("index", "polygon").show(false)
     if (!index.isEmpty)
       df = df.withColumn("index", col("polygon") index index.get)
-    //df.select("index","polygon").show(false)
+    df.select("index","polygon").show(false)
     df
   }
 
