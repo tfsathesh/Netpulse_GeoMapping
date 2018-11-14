@@ -281,7 +281,8 @@ class JobGeoMappingSuite extends FunSuite with DataFrameSuiteBase {
       val expectedData = Seq(
         Row("User1", 324136.095, 384397.104, 53.350996777067465,  -3.141149882762535, "213", 1),
         Row("User2", 324011.005, 386869.185, 53.373194945386025, -3.1436235641372563, "213", 1),
-        Row("User3", 325009.696, 386295.83, 53.36818516353612, -3.128479626392792, "120,213", 2)
+        Row("User3", 325009.696, 386295.83, 53.36818516353612, -3.128479626392792, "120,213", 2),
+        Row("User4", 320865.0, 392188.0, 53.4205306818467,-3.1922345095472395,"NoMatch",0  )
       )
 
       val expectedDF = spark.createDataFrame(
@@ -329,7 +330,8 @@ class JobGeoMappingSuite extends FunSuite with DataFrameSuiteBase {
       val expectedData = Seq(
         Row("User1", 324136.095, 384397.104, 53.350996777067465, -3.141149882762535, "213", 1, "CH48", "CH", 1),
         Row("User2", 324011.005, 386869.185, 53.373194945386025, -3.1436235641372563, "213", 1, "CH48", "CH", 1),
-        Row("User3", 325009.696, 386295.83, 53.36818516353612, -3.128479626392792, "120,213", 2, "CH48", "CH", 1)
+        Row("User3", 325009.696, 386295.83, 53.36818516353612, -3.128479626392792, "120,213", 2, "CH48", "CH", 1),
+        Row("Dft_User", 320865.0,392188.0,53.4205306818467,-3.1922345095472395,"NoMatch",0,"NoMatch","NoMatch",0)
       )
 
       val expectedDF = spark.createDataFrame(
@@ -371,7 +373,8 @@ class JobGeoMappingSuite extends FunSuite with DataFrameSuiteBase {
         Row("User1", 324136.095, 384397.104, 53.350996777067465, -3.141149882762535, "213", "CH48", "CH"),
         Row("User2", 324011.005, 386869.185, 53.373194945386025, -3.1436235641372563, "213", "CH48", "CH"),
         Row("User3", 325009.696, 386295.83, 53.36818516353612, -3.128479626392792, "120", "CH48", "CH"),
-        Row("User3", 325009.696, 386295.83, 53.36818516353612, -3.128479626392792, "213", "CH48", "CH")
+        Row("User3", 325009.696, 386295.83, 53.36818516353612, -3.128479626392792, "213", "CH48", "CH"),
+        Row("Dft_User",320865.0,392188.0,53.4205306818467,-3.1922345095472395,"NoMatch","NoMatch","NoMatch")
       )
 
       val expectedDF = spark.createDataFrame(
@@ -407,20 +410,6 @@ class JobGeoMappingSuite extends FunSuite with DataFrameSuiteBase {
       // Sort to keep the order (needed for dataframe comparision)
       actualDf = actualDf.sort("Name")
 
-      var expectedData = Seq(
-        Row("User1", 53.350996777067465, -3.141149882762535, "213", "CH48", "CH"),
-        Row("User2", 53.373194945386025, -3.1436235641372563, "213", "CH48", "CH"),
-        Row("User3", 53.36818516353612, -3.128479626392792, "120", "CH48", "CH"),
-        Row("User3", 53.36818516353612, -3.128479626392792, "213", "CH48", "CH")
-      )
-
-      var expectedDF = spark.createDataFrame(
-        spark.sparkContext.parallelize(expectedData),
-        StructType(actualDf.schema)
-      ).sort("Name")
-
-      assertDataFrameApproximateEquals(expectedDF, actualDf, 0.005)
-
       // consolidate metadata
       aggregateMetadata  = true
       actualDf           = JobGeoMapping.runMultiPolygonJob(spark, dfIn, xColName, yColName, toGPS, dfMultiPolygons, polygonCol, Some(metadataToExtract), magellanIndex, aggregateMetadata, None, None)
@@ -428,13 +417,14 @@ class JobGeoMappingSuite extends FunSuite with DataFrameSuiteBase {
       // Sort to keep the order (needed for dataframe comparision)
       actualDf = actualDf.sort("Name")
 
-      expectedData = Seq(
+      val expectedData = Seq(
         Row("User1", 53.350996777067465, -3.141149882762535, "213", 1, "CH48", "CH", 1),
         Row("User2", 53.373194945386025, -3.1436235641372563, "213", 1, "CH48", "CH", 1),
-        Row("User3", 53.36818516353612, -3.128479626392792, "120,213", 2, "CH48", "CH", 1)
+        Row("User3", 53.36818516353612, -3.128479626392792, "120,213", 2, "CH48", "CH", 1),
+        Row("Dft_User",53.42053247546133,-3.1922377960725044,"NoMatch",0,"NoMatch","NoMatch",0)
       )
 
-      expectedDF = spark.createDataFrame(
+      val expectedDF = spark.createDataFrame(
         spark.sparkContext.parallelize(expectedData),
         StructType(actualDf.schema)
       ).sort("Name")
@@ -475,10 +465,11 @@ class JobGeoMappingSuite extends FunSuite with DataFrameSuiteBase {
     actualDf = actualDf.sort("Name")
 
     val expectedData = Seq(
-      Row("User1", 324136.095, 384397.104, 53.350996777067465, -3.141149882762535, "213", 1, "CH48", "CH", 1),
-      Row("User2", 324011.005, 386869.185, 53.373194945386025, -3.1436235641372563, "213", 1, "CH48", "CH", 1),
-      Row("User3", 325009.696, 386295.83, 53.36818516353612, -3.128479626392792, "120,213", 2, "CH48", "CH", 1),
-      Row("Dft_User", 320865.0, 392188.0, 53.4205306818467, -3.1922345095472395, "", 1, "", "", 1)
+      Row("User1", 324136.095, 384397.104, 53.350996777067465, -3.141149882762535, "213,-", 2, "CH48,-", "CH,-", 2),
+      Row("User2", 324011.005, 386869.185, 53.373194945386025, -3.1436235641372563, "213,-", 2, "CH48,-", "CH,-", 2),
+      Row("User3", 325009.696, 386295.83, 53.36818516353612, -3.128479626392792, "120,213,-", 3, "CH48,-", "CH,-", 2),
+      Row("Dft_User", 320865.0, 392188.0, 53.4205306818467, -3.1922345095472395, "-", 1, "-", "-", 1)
+
     )
 
     val expectedDF = spark.createDataFrame(
@@ -594,4 +585,105 @@ class JobGeoMappingSuite extends FunSuite with DataFrameSuiteBase {
     TestHelper.clOptsErrorTest(Array(""), "Required option 'coords-info' not found")
   }
 
+  test("Multi polygon Output Validator (NoMatch value with Count 0)") {
+    /* This test covers below
+    1. String 'NoMatch' will be populated in metadata columns of a polygon, if there is no entry found for a source coordinate
+    2. At the same time, value 0 will be populated as Count value as there is no match.
+   * * */
+    val dfIn = Seq(
+      ("User1", 324136.095, 384397.104),
+      ("User2", 324011.005, 386869.185),
+      ("User3", 320865.000, 392188.000)       // Outside polygons set but with in default polygons set
+    ).toDF("Name", "xCentroid", "yCentroid")
+
+    val xColName           = "xCentroid"
+    val yColName           = "yCentroid"
+    val polygonsPath       = this.getClass.getClassLoader.getResource("geojson/beacon_gps_sample.geojson").getPath
+    val polygonsPath2      = this.getClass.getClassLoader.getResource("geojson/postdist_gps_sample.geojson").getPath
+    val metadataToExtract  = Seq( Seq("Postdist","Postarea"),Seq("UID","RadioManager","Mobile_Optimiser"))
+    val magellanIndex      = Some(5)
+    val magellanIndex2      = Some(10)
+
+    val aggregateMetadata  = true
+    val polygonCol         = "polygon"
+
+    val dfMultiPolygons    = CoordinatesUtils.loadMultiPolygons(spark, Seq(polygonsPath2,polygonsPath), Some(metadataToExtract), Seq(magellanIndex2,magellanIndex))
+    // Run job
+    var actualDf           = JobGeoMapping.runMultiPolygonJob(spark, dfIn, xColName, yColName, true, dfMultiPolygons, polygonCol, Some(metadataToExtract), Seq(magellanIndex,magellanIndex2), aggregateMetadata, None, None)
+    val expectedData = Seq(
+      Row("User1",324136.095,384397.104,53.350996777067465,-3.141149882762535,"CH48","CH",1,"213","Radio_Mgr2","01234567891",1),
+      Row("User2",324011.005,386869.185,53.373194945386025,-3.1436235641372563,"CH48","CH",1,"213","Radio_Mgr2","01234567891",1),
+      Row("User3",320865.0,392188.0,53.4205306818467,-3.1922345095472395,"NoMatch","NoMatch",0,"NoMatch","NoMatch","NoMatch",0)
+    )
+
+    val expectedDf = spark.createDataFrame(
+      spark.sparkContext.parallelize(expectedData),
+      StructType(actualDf.schema)
+    )
+    assertDataFrameApproximateEquals(actualDf.sort("name"), expectedDf.sort("name"),000.5)
+
+  }
+
+  test("Multi polygon Output Validator (Populate value '-' when metaddata value is missing or null") {
+    /* This test covers below,
+    In case there is matching entry in polygon, but metadata is missing or value is null, then metadata default missing value '-' will be populated
+   * * */
+    val dfIn = Seq(
+      ("User1", 324136.095, 384397.104),
+      ("User2", 324011.005, 386869.185),
+      ("User3", 320865.000, 392188.000),       // Outside polygons set but with in default polygons set
+      ("User4", 325009.695, 386295.829)
+    ).toDF("Name", "xCentroid", "yCentroid")
+
+    val xColName           = "xCentroid"
+    val yColName           = "yCentroid"
+    val polygonsPath       = this.getClass.getClassLoader.getResource("geojson/beacon_gps_sample_3rows.geojson").getPath
+    val polygonsPath2      = this.getClass.getClassLoader.getResource("geojson/postdist_gps_sample.geojson").getPath
+
+    val metadataToExtract  = Seq( Seq("Postdist","Postarea"),Seq("UID","RadioManager","Mobile_Optimiser"))
+    val magellanIndex      = Some(5)
+    val magellanIndex2      = Some(10)
+
+    val aggregateMetadata  = true
+    val polygonCol         = "polygon"
+
+    val dfMultiPolygons    = CoordinatesUtils.loadMultiPolygons(spark, Seq(polygonsPath2,polygonsPath), Some(metadataToExtract), Seq(magellanIndex2,magellanIndex))
+    // Run job
+    var actualDf           = JobGeoMapping.runMultiPolygonJob(spark, dfIn, xColName, yColName, true, dfMultiPolygons, polygonCol, Some(metadataToExtract), Seq(magellanIndex,magellanIndex2), aggregateMetadata, None, None)
+    val expectedData = Seq(
+      Row("User1",324136.095,384397.104,53.350996777067465,-3.141149882762535,"CH48","CH",1,"213,214","Radio_Mgr2,Radio_Mgr3","-,-",2),
+      Row("User2",324011.005,386869.185,53.373194945386025,-3.1436235641372563,"CH48","CH",1,"213,214","Radio_Mgr2,Radio_Mgr3","-,-",2),
+      Row("User3",320865.0,392188.0,53.4205306818467,-3.1922345095472395,"NoMatch","NoMatch",0,"NoMatch","NoMatch","NoMatch",0),
+      Row("User4",325009.695,386295.829,53.368185154407186,-3.128479641180844,"CH48","CH",1,"120,213,214","Radio_Mgr1,Radio_Mgr2,Radio_Mgr3","01234567890,-,-",3)
+    )
+
+    val expectedDf = spark.createDataFrame(
+      spark.sparkContext.parallelize(expectedData),
+      StructType(actualDf.schema)
+    )
+    assertDataFrameApproximateEquals(actualDf.sort("name"), expectedDf.sort("name"),000.5)
+  }
 }
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+

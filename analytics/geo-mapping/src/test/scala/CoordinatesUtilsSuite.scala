@@ -271,6 +271,7 @@ class CoordinatesUtilsSuite extends FunSuite with DataFrameSuiteBase {
 
       val expectedDf = realPolygonsDf.union(defaultPolygonsDf)
 
+      actualDf.show(false)
       assertDataFrameApproximateEquals(expectedDf, actualDf, 0.005)
     }
   }

@@ -70,18 +70,28 @@ object CoordinatesUtils {
     val metadataCol: String = "metadata"
 
     if (!metadataToExtract.isEmpty) {
-      val getMetadataValue = udf((hash: Map[String, String], key: String) => hash.getOrElse(key, "-"))
+      val getMetadataValue  = udf((_: Map[String, String]).getOrElse((_: String), "-") match {    //converted this line to Implicit -- (hash: Map[String, String], key: String) => hash.getOrElse(key, "-")
+        case value if value != null && !value.isEmpty => value
+        case _ => "-"
+      })
       metadataToExtract.get.foreach { key =>
         df = df.withColumn(key, getMetadataValue(col(metadataCol), lit(key)))
       }
       df = df.drop(col(metadataCol))
     }
 
-    df.select("index", "polygon").show(false)
     if (!index.isEmpty)
       df = df.withColumn("index", col("polygon") index index.get)
-    df.select("index","polygon").show(false)
     df
+  }
+
+  implicit class NullOccludingMap[K, V](private val underlying: Map[K, V]) extends AnyVal {
+    def getNonNullOrElse(key: K, default: V): V = {
+      underlying.get(key) match {
+        case Some(value) if value != null => value
+        case _ => default
+      }
+    }
   }
 
   /** This function loads one or more polygons sets. This function calls loadPolygons function
