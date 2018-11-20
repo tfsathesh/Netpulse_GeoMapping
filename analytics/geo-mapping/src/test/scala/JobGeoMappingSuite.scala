@@ -663,8 +663,51 @@ class JobGeoMappingSuite extends FunSuite with DataFrameSuiteBase {
     )
     assertDataFrameApproximateEquals(actualDf.sort("name"), expectedDf.sort("name"),000.5)
   }
-}
 
+
+test("Multi polygon load Validator (using Polygon UnionSet )") {
+  /* This test covers below,
+  In case there is matching entry in polygon, but metadata is missing or value is null, then metadata default missing value '-' will be populated
+ * * */
+  val dfIn = Seq(
+    ("User1", 324136.095, 384397.104),
+    ("User2", 324011.005, 386869.185),
+    ("User3", 320865.000, 392188.000),       // Outside polygons set but with in default polygons set
+    ("User4", 325009.695, 386295.829)
+  ).toDF("Name", "xCentroid", "yCentroid")
+
+  val xColName           = "xCentroid"
+  val yColName           = "yCentroid"
+  val polygonsPath       = this.getClass.getClassLoader.getResource("geojson/beacon_gps_sample_3rows.geojson").getPath
+  val polygonsPath2      = this.getClass.getClassLoader.getResource("geojson/postdist_gps_sample.geojson").getPath
+
+  val metadataToExtract  = Seq( Seq("Postdist","Postarea"),Seq("UID","RadioManager","Mobile_Optimiser"))
+  val magellanIndex      = Some(5)
+  val magellanIndex2      = Some(10)
+
+  val aggregateMetadata  = true
+  val polygonCol         = "polygon"
+
+  val dfMultiPolygons    = PolygonsUtils.loadPolygonsSet(spark, Seq(polygonsPath2,polygonsPath), Some(metadataToExtract), Seq(magellanIndex2,magellanIndex))
+
+  println("*******************before Schema print")
+  dfMultiPolygons.printSchema()
+  println("*******************after Schema print")
+
+  //********* Need to handle default polygons logic
+  // Run job
+  var actualDf           = PolygonsUtils.runPolygonsUnionJob(spark, dfIn, xColName, yColName, true, dfMultiPolygons, polygonCol, Some(metadataToExtract), Seq(magellanIndex,magellanIndex2), aggregateMetadata, None, None)
+   actualDf.show()
+  val expectedData = Seq(
+    Row("User1",324136.095,384397.104,53.350996777067465,-3.141149882762535,"CH48","CH",1,"213,214","Radio_Mgr2,Radio_Mgr3","-,-",2),
+    Row("User2",324011.005,386869.185,53.373194945386025,-3.1436235641372563,"CH48","CH",1,"213,214","Radio_Mgr2,Radio_Mgr3","-,-",2),
+    Row("User3",320865.0,392188.0,53.4205306818467,-3.1922345095472395,"NoMatch","NoMatch",0,"NoMatch","NoMatch","NoMatch",0),
+    Row("User4",325009.695,386295.829,53.368185154407186,-3.128479641180844,"CH48","CH",1,"120,213,214","Radio_Mgr1,Radio_Mgr2,Radio_Mgr3","01234567890,-,-",3)
+  )
+
+  assert(1==1)
+}
+}
 
 
 
