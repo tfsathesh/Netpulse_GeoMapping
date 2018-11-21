@@ -30,9 +30,6 @@ object JobGeoMapping {
       .config("spark.executor.cores", "3") //********* this needs to be passed as spark submit conf
       .getOrCreate()
 
-    // For implicit conversions
-    import spark.implicits._
-
     if (consoleEcho)
       spark.conf.getAll.foreach { case (key, value) => println(s"\t$key : $value") }
 
@@ -97,6 +94,8 @@ object JobGeoMapping {
 
     aggregatedConsolidated
   }
+
+  case class schema(_c0: Option[String], _c1: Option[String], _c2: Option[String], _c3: Option[String], _c4: Option[String], _c5: Option[String], _c6: Option[String], _c7: Option[String], _c8: Option[String], _c9: Option[String], _c10: Option[String], _c11: Option[String], _c12: Option[String], _c13: Option[String])
 
 
   /** This functions runs magellan algorithm for given points and single polygons set.
@@ -172,6 +171,8 @@ object JobGeoMapping {
 
     if (!outPartitions.isEmpty)
       dfPointsLabeled = dfPointsLabeled.repartition(outPartitions.get)
+
+    //  dfPointLabeledWithUnmatch.show(false)
 
     if (outPath.isEmpty == false) {
       dfPointLabeledWithUnmatch.write
@@ -289,6 +290,7 @@ object JobGeoMapping {
     val aggregateMetadata = opt[Boolean](name = "aggregate-labels", required = false, default = Some(false))
     val others = trailArg[List[String]](required = false)
     val loadType = opt[String](name = "load-type", required = false, default = Some("singlejoin"))
+    val readOption = opt[String](name = "read-option", required = false, default = Some("DF"))
 
     validate(magellanIndex, polygonsPath, metadataToFilter) { (index, paths, metadata) =>
       val indexCount = index.split(MAGELLAN_INDEX_SEPARATOR).length
@@ -340,7 +342,7 @@ object JobGeoMapping {
     val defaultPolygonsPath = if (clopts.defaultPolygonsPath() == "") None else Some(clopts.defaultPolygonsPath())
     val aggregateMetadata = clopts.aggregateMetadata()
     val loadType = clopts.loadType()
-
+    val readOption = clopts.readOption()
     // metadataToFilter type is Option[Seq[String]]. Each element is separated by ",".
     // This need to be converted to Seq[Seq[String]]
     val metadataToFilterSeq: Seq[Seq[String]] = for {
@@ -348,33 +350,48 @@ object JobGeoMapping {
     } yield metaData.split(METADATA_SEPARATOR).toSeq
 
     val tmp = coordsInfo.split("::")
-    val xColName = "_c%s".format(tmp(0)) //_c3   //********* We may need to cast this manually
-    val yColName = "_c%s".format(tmp(1)) //_c4   //********* We may need to cast this manually
+    val xColName = "_c%s".format(tmp(0)) //_c12   //********* We may need to cast this manually
+    val yColName = "_c%s".format(tmp(1)) //_c13   //********* We may need to cast this manually
     val coordsPath = tmp(2)
 
     val spark = getSparkSession("JobGeoMapping")
 
-    val dfIn = spark
-      .read
-      .format("com.databricks.spark.csv")
-      .option("delimiter", separator)
-      .option("header", "false")
-      .csv(coordsPath)
+    import spark.implicits._
 
+    var dfIn = spark.sparkContext.parallelize(List("10")).toDF()
+
+    if (readOption == "DF") {
+      dfIn = spark
+        .read
+        .format("com.databricks.spark.csv")
+        .option("delimiter", separator)
+        .option("header", "false")
+        .csv(coordsPath)
+    }
+    else {
+      val rddIn = spark
+        .read
+        .format("com.databricks.spark.csv")
+        .option("header", "false")
+        .csv(coordsPath).rdd
+      dfIn = rddIn.map(_.mkString.split(separator)).map(x => schema(x.lift(0), x.lift(1), x.lift(2), x.lift(3), x.lift(4), x.lift(5), x.lift(6), x.lift(7), x.lift(8), x.lift(9), x.lift(10), x.lift(11), x.lift(12), x.lift(13))).toDF()
+    }
     val dfIn2 =
       if (inPartitions > 0)
         dfIn.repartition(inPartitions)
       else
         dfIn
 
+    // dfIn2.show(false)
+
     if (loadType != "multijoin") {
-      println("*********************************************** SingleJoin Run **********************************")
+      println("*********************************************** SingleJoin Run **********************************" + separator)
       var polygonsUnionSet = PolygonsUtils.loadPolygonsSet(spark, polygonsPath.get, Some(metadataToFilterSeq), magellanIndex)
       //******* Need to Handle default polygons Path scenario
       PolygonsUtils.runPolygonsUnionJob(spark, dfIn2, xColName, yColName, toGPS, polygonsUnionSet, "polygon", Some(metadataToFilterSeq), magellanIndex, aggregateMetadata, outPartitions = outPartitions, outPath = Some(outPath))
     }
     else {
-      println("*********************************************** MultiJoin Run **********************************")
+      println("*********************************************** MultiJoin Run **********************************" + separator)
       var polygonsDfSeq = CoordinatesUtils.loadMultiPolygons(spark, polygonsPath.get, Some(metadataToFilterSeq), magellanIndex)
       if (!defaultPolygonsPath.isEmpty) {
         val defaultPolygonsDfSeq = CoordinatesUtils.loadDefaultPolygons(spark, defaultPolygonsPath.get, Some(metadataToFilterSeq), magellanIndex)

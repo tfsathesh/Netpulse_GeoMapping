@@ -172,6 +172,7 @@ object PolygonsUtils {
         .option("header", "false")
         .csv(outPath.get)
     }
+   // resultDf.show(false)
     resultDf
   }
 
