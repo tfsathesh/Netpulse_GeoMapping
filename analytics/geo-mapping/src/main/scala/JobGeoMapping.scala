@@ -287,7 +287,7 @@ object JobGeoMapping {
     val outPartitions = opt[Int](name = "out-partitions", required = false, default = Some(-1))
     val metadataToFilter = opt[String](name = "metadata-to-filter", required = false, default = Some(""))
     val defaultPolygonsPath = opt[String](name = "default-polygons-path", required = false, default = Some(""))
-    val aggregateMetadata = opt[Boolean](name = "aggregate-labels", required = false, default = Some(false))
+    val aggregateMetadata = opt[Boolean](name = "aggregate-labels", required = false, default = Some(true))
     val others = trailArg[List[String]](required = false)
     val loadType = opt[String](name = "load-type", required = false, default = Some("singlejoin"))
     val readOption = opt[String](name = "read-option", required = false, default = Some("DF"))
