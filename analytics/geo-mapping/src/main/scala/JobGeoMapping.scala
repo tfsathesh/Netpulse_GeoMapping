@@ -151,11 +151,11 @@ object JobGeoMapping {
       dfPoints = dfPoints.index(magellanIndex.get)
     }
 
-    var dfPointsLabeled = dfPoints
-      .join(broadcast(dfPolygons),
-        (dfPoints.col(MAGELLANPOINT_COL) within dfPolygons.col(polygonCol)), "left_outer")
+    // Below join is for spark 2.3
+    var dfPointsLabeled = broadcast(dfPolygons).join(
+      dfPoints, dfPoints.col(MAGELLANPOINT_COL) within dfPolygons.col(polygonCol), "right_outer"
+    )
       .select(cols.map(name => col(name)): _*)
-
 
     /*
     Below fold left option overrides metadata columns with value 'NoMatch' when there is no match found.

@@ -35,7 +35,6 @@ object PolygonsUtils {
     else
       indexSeq
 
-    val polygonsCount: Seq[Int] = (1 to pathSeq.length)
     var polygonIndex = 0
 
     def expr(dfCols: Set[String], allCols: Set[String]) = {
@@ -140,9 +139,10 @@ object PolygonsUtils {
       dfPoints = dfPoints.index(magellanIndex(0).get)
     }
 
-    var dfPointsLabeled = dfPoints
-      .join(broadcast(dfMultiPolygons),
-        (dfPoints.col(MAGELLANPOINT_COL) within dfMultiPolygons.col(polygonCol)), "left_outer")
+    // Below join is for spark 2.3
+    var dfPointsLabeled = broadcast(dfMultiPolygons).join(
+      dfPoints,dfPoints.col(MAGELLANPOINT_COL) within dfMultiPolygons.col(polygonCol),"right_outer"
+    )
       .select(cols.map(name => col(name)): _*)
 
     var dfPointsNoMatchLabelled =
@@ -151,9 +151,6 @@ object PolygonsUtils {
       (df, metadataColName) =>
         df.withColumn(metadataColName, when(col(metadataColName).isNull, NOMATCH_IN_POLYGONS).otherwise(col(metadataColName)))
     }
-
-    if (!outPartitions.isEmpty)
-      dfPointsNoMatchLabelled = dfPointsNoMatchLabelled.repartition(outPartitions.get)
 
     var resultDf: DataFrame = if(aggregateMetadata) {
       consolidateUnionMetadata(dfPointsNoMatchLabelled, groupByCols, metadataColsSeq,metadataColsFullList, METADATA_SEPARATOR, Some(DEFAULT_POLYGONS_METADATA))
