@@ -82,7 +82,7 @@ object CoordinatesUtils {
 
     if (!index.isEmpty)
       df = df.withColumn("index", col("polygon") index index.get)
-    df
+    df.distinct()
   }
 
   implicit class NullOccludingMap[K, V](private val underlying: Map[K, V]) extends AnyVal {

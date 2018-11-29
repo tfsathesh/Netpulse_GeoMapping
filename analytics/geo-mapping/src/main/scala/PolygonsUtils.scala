@@ -158,6 +158,8 @@ object PolygonsUtils {
       dfPointsNoMatchLabelled
     }
 
+    resultDf = resultDf.drop(UNIQUE_ID_COLUMN_NAME)
+
     if (!outPartitions.isEmpty)
       resultDf = resultDf.repartition(outPartitions.get)
 
@@ -169,7 +171,6 @@ object PolygonsUtils {
         .option("header", "false")
         .csv(outPath.get)
     }
-   // resultDf.show(false)
     resultDf
   }
 
@@ -192,14 +193,21 @@ object PolygonsUtils {
 
     /* udf to count number of metadata values by splitting the aggregated(concat_ws) string, also it filters NoMatch and IgnoreColumn values in the count  */
     //******* We can imporove here by simpling counting when the value is not in NOMATCH_IN_POLYGONS  and NOT_RELATED_COLUMN
-    val countIgnoringNull = udf{(concatAggValues:String)=> (concatAggValues.split(metadataSeparator).toSeq filter (f => (!f.equals(NOMATCH_IN_POLYGONS) && !f.equals(NOT_RELATED_COLUMN)))).length}
+    val countIgnoringNull = udf{concatAggValues:String=>
+      if(concatAggValues.length==0) 0 else (concatAggValues.split(metadataSeparator).size)}
+
+    val concatValues = udf{concatValues:String=>
+      if(concatValues.length == 0) NOMATCH_IN_POLYGONS else concatValues}
+
 
 
     /* for all metadata columns, values are concatenated with a separator. For all Count columns, corresponding metadata column values are concatenated and split to get count value*/
     val aggColsAndCountCols: Seq[Column] = metadataWithCountCol.map(colName =>
       colName.contains("_Count") match {
-        case false => concat_ws(metadataSeparator, collect_list(when(!(col(colName).isin(NOT_RELATED_COLUMN)), col(colName)))).alias(colName)
-        case _ => countIgnoringNull(concat_ws(metadataSeparator, collect_list(when(!(col(colName.stripSuffix("_Count")).isin(NOT_RELATED_COLUMN)), col(colName.stripSuffix("_Count")))))).alias(colName)
+        case false =>
+          concatValues(concat_ws(metadataSeparator, collect_list(when(!(col(colName).isin(NOT_RELATED_COLUMN)), col(colName))))).alias(colName)
+        case _ =>
+          countIgnoringNull(concat_ws(metadataSeparator, collect_list(when(!col(colName.stripSuffix("_Count")).isin(NOT_RELATED_COLUMN,NOMATCH_IN_POLYGONS), col(colName.stripSuffix("_Count")))))).alias(colName)
       }
     )
 

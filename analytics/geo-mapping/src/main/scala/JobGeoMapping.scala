@@ -1,6 +1,6 @@
 import org.apache.spark.sql.magellan.dsl.expressions._
 import org.apache.spark.sql.{Column, DataFrame, SaveMode, SparkSession}
-import org.apache.spark.sql.functions.{broadcast, col, collect_list, concat_ws, expr, lit, size, split, udf, when}
+import org.apache.spark.sql.functions.{broadcast, col, collect_list, concat_ws, expr, lit, size, split, udf, when, monotonically_increasing_id}
 import org.rogach.scallop._
 
 object JobGeoMapping {
@@ -12,6 +12,7 @@ object JobGeoMapping {
   // metadata used in default polygons. TODO: This can be optional scallop parameter? need to discuss with reviewer.
   val DEFAULT_POLYGONS_METADATA = ""
   val NOMATCH_IN_POLYGONS = "NoMatch"
+  val UNIQUE_ID_COLUMN_NAME="rowid"
 
   //******* Logging need to be configured via log4j.properties
   //******* CLOpts in different class
@@ -256,6 +257,8 @@ object JobGeoMapping {
       groupByCols = resultDf.columns.toSeq
     }
 
+    combinedDf= combinedDf.drop(UNIQUE_ID_COLUMN_NAME)
+
     if (!outPartitions.isEmpty)
       combinedDf = combinedDf.repartition(outPartitions.get)
 
@@ -376,11 +379,14 @@ object JobGeoMapping {
         .csv(coordsPath).rdd
       dfIn = rddIn.map(_.mkString.split(separator)).map(x => schema(x.lift(0), x.lift(1), x.lift(2), x.lift(3), x.lift(4), x.lift(5), x.lift(6), x.lift(7), x.lift(8), x.lift(9), x.lift(10), x.lift(11), x.lift(12), x.lift(13))).toDF()
     }
+
+    val dfWithRowId = dfIn.withColumn(UNIQUE_ID_COLUMN_NAME,monotonically_increasing_id())
+
     val dfIn2 =
       if (inPartitions > 0)
-        dfIn.repartition(inPartitions)
+        dfWithRowId.repartition(inPartitions)
       else
-        dfIn
+        dfWithRowId
 
     // dfIn2.show(false)
 
