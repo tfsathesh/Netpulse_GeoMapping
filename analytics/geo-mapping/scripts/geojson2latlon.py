@@ -15,7 +15,7 @@ def traverse_list(l, reverse = False, to_gps = True):
 
         x2, y2 = (x, y)
         if to_gps:
-            x2, y2 = pyproj.transform(bng, wgs84, x, y) 
+            x2, y2 = pyproj.transform(bng, wgs84, x, y)
 
         if reverse:
             return [y2,x2]
@@ -41,7 +41,7 @@ def dump_geojson(data):
         s += '"properties": '
         s += json.dumps(d['properties'])
         s += ","
-        s += '"geometry": ' 
+        s += '"geometry": '
         s += json.dumps(d['geometry'])
         s += '}'
         l.append(s)
@@ -53,8 +53,8 @@ def dump_geojson(data):
 if __name__ == '__main__':
     parser = OptionParser()
     parser.add_option('', '--polygon-key', dest = 'POLYGON_KEY', default = None)
-    parser.add_option('', '--no-to-gps', dest = 'TO_GPS', action = 'store_false', default = True)
-    parser.add_option('', '--reverse',   dest = 'IS_REVERSE', action = 'store_true', default = False)
+    parser.add_option('', '--no-to-gps', dest = 'TO_GPS', action = 'store_false', default = False)
+    parser.add_option('', '--reverse',   dest = 'IS_REVERSE', action = 'store_true', default = True)
     opt, fnames = parser.parse_args()
 
     data = json.load(sys.stdin)
