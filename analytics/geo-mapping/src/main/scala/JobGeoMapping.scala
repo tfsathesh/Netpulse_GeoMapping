@@ -348,9 +348,10 @@ object JobGeoMapping {
     val readOption = clopts.readOption()
     // metadataToFilter type is Option[Seq[String]]. Each element is separated by ",".
     // This need to be converted to Seq[Seq[String]]
+
     val metadataToFilterSeq: Seq[Seq[String]] = for {
-      metaData <- metadataToFilter.getOrElse(Seq(""))
-    } yield metaData.split(METADATA_SEPARATOR).toSeq
+      (metaData,i) <- (metadataToFilter.getOrElse(Seq("")),0 to metadataToFilter.get.size).zipped.toSeq
+    } yield metaData.split(METADATA_SEPARATOR).map(col=> col+"_"+i).toSeq
 
     val tmp = coordsInfo.split("::")
     val xColName = "_c%s".format(tmp(0)) //_c12   //********* We may need to cast this manually
@@ -393,12 +394,16 @@ object JobGeoMapping {
     if (loadType != "multijoin") {
       println("*********************************************** SingleJoin Run **********************************" + separator)
       var polygonsUnionSet = PolygonsUtils.loadPolygonsSet(spark, polygonsPath.get, Some(metadataToFilterSeq), magellanIndex)
+      println("*********************************************** SingleJoin Run Polygon Schema")
+      polygonsUnionSet.printSchema()
       //******* Need to Handle default polygons Path scenario
       PolygonsUtils.runPolygonsUnionJob(spark, dfIn2, xColName, yColName, toGPS, polygonsUnionSet, "polygon", Some(metadataToFilterSeq), magellanIndex, aggregateMetadata, outPartitions = outPartitions, outPath = Some(outPath))
     }
     else {
       println("*********************************************** MultiJoin Run **********************************" + separator)
       var polygonsDfSeq = CoordinatesUtils.loadMultiPolygons(spark, polygonsPath.get, Some(metadataToFilterSeq), magellanIndex)
+      println("*********************************************** MultiJoin Run Polygon Schemas")
+      polygonsDfSeq.foreach(a=>a printSchema())
       if (!defaultPolygonsPath.isEmpty) {
         val defaultPolygonsDfSeq = CoordinatesUtils.loadDefaultPolygons(spark, defaultPolygonsPath.get, Some(metadataToFilterSeq), magellanIndex)
         polygonsDfSeq = CoordinatesUtils.unionOfPolygonsDf(polygonsDfSeq, defaultPolygonsDfSeq)

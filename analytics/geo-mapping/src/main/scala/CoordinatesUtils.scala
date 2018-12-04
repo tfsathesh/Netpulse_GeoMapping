@@ -69,8 +69,10 @@ object CoordinatesUtils {
 
     val metadataCol: String = "metadata"
 
+    def removeIndex(str:String): String = {str.substring(0,str.lastIndexOf("_"))}
+
     if (!metadataToExtract.isEmpty) {
-      val getMetadataValue  = udf((_: Map[String, String]).getOrElse((_: String), "-") match {    //converted this line to Implicit -- (hash: Map[String, String], key: String) => hash.getOrElse(key, "-")
+      val getMetadataValue  = udf((colValue: Map[String, String], str: String) => (colValue: Map[String, String]).getOrElse(removeIndex(str), "-") match { //converted this line to Implicit -- (hash: Map[String, String], key: String) => hash.getOrElse(key, "-")
         case value if value != null && !value.isEmpty => value
         case _ => "-"
       })
