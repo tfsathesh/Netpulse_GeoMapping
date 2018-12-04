@@ -1,4 +1,4 @@
-import org.apache.sis.referencing.{CRS, CommonCRS}
+import org.apache.sis.referencing.CRS
 import org.apache.sis.geometry.DirectPosition2D
 import org.apache.spark.sql.functions.{udf, col, lit}
 import org.apache.spark.sql.{DataFrame, SparkSession}
@@ -128,9 +128,7 @@ object CoordinatesUtils {
       val df = CoordinatesUtils.loadPolygons(spark, polygonsPath, Some(metadataToExtract), index)
       polygonsDfs = polygonsDfs ++ Seq(df)
     }
-
     polygonsDfs
-
   }
 
   /** This function loads default polygons set. Based on the metadata information
@@ -174,7 +172,6 @@ object CoordinatesUtils {
 
       unionDfs = unionDfs ++ Seq(resDf)
     }
-
     unionDfs
   }
 }
