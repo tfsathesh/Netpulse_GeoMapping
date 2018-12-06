@@ -1,6 +1,7 @@
+import org.apache.spark
 import org.apache.spark.sql.magellan.dsl.expressions._
 import org.apache.spark.sql.{Column, DataFrame, SaveMode, SparkSession}
-import org.apache.spark.sql.functions.{broadcast, col, collect_list, concat_ws, expr, lit, size, split, udf, when, monotonically_increasing_id}
+import org.apache.spark.sql.functions.{broadcast, col, collect_list, concat_ws, expr, lit, monotonically_increasing_id, size, split, udf, when}
 import org.rogach.scallop._
 
 object JobGeoMapping {
@@ -14,9 +15,7 @@ object JobGeoMapping {
   val NOMATCH_IN_POLYGONS = "NoMatch"
   val UNIQUE_ID_COLUMN_NAME="rowid"
 
-  //******* Logging need to be configured via log4j.properties
-  //******* CLOpts in different class
-  //******* Constanst in separate class
+
   /** This function builds spark session.
     *
     * @param name        App name
@@ -114,6 +113,7 @@ object JobGeoMapping {
     * @return Returns data frame with points labelled.
     */
   def runJob(
+              spark: SparkSession,
               df: DataFrame,
               xCol: String,
               yCol: String,
@@ -122,17 +122,18 @@ object JobGeoMapping {
               polygonCol: String = "polygon",
               metadataCols: Option[Seq[String]] = None,
               magellanIndex: Option[Int] = None,
-              outPartitions: Option[Int] = None,
+              outPartitions: Option[Int],
               outPath: Option[String] = None
             ): DataFrame = {
 
     val MAGELLANPOINT_COL = "_magellanPoint"
 
     var cols = df.columns.toSeq
-
+    var metadataColsNullRows = metadataCols.get
     val dfIn =
       if (toGPS) {
         cols = cols ++ Seq("lat", "lon")
+        metadataColsNullRows=metadataColsNullRows++Seq("lat", "lon")   //variable used for Null rows at later stage
         CoordinatesUtils.toGPS(df, xCol, yCol)
       }
       else
@@ -152,11 +153,29 @@ object JobGeoMapping {
       dfPoints = dfPoints.index(magellanIndex.get)
     }
 
+    import spark.implicits._
     // Below join is for spark 2.3
-    var dfPointsLabeled = broadcast(dfPolygons).join(
-      dfPoints, dfPoints.col(MAGELLANPOINT_COL) within dfPolygons.col(polygonCol), "right_outer"
+
+    var dfPointsNullRows = dfPoints.filter(dfPoints.col(MAGELLANPOINT_COL).isNull)
+    dfPoints = dfPoints.filter(dfPoints.col(MAGELLANPOINT_COL).isNotNull).withColumn("newKey",monotonically_increasing_id() mod outPartitions.get)
+    var sequenceDF =   spark.sparkContext.parallelize(0 to outPartitions.get-1).toDF.withColumnRenamed("value","cartSequenceNum")
+    var dfPolygons2 = dfPolygons.join(sequenceDF)
+
+    var dfPointsLabeled = dfPoints.join(
+      dfPolygons2,
+      (dfPoints("newKey")===dfPolygons2("cartSequenceNum"))
+        &&  (dfPoints.col(MAGELLANPOINT_COL) within dfPolygons2.col(polygonCol))
+      , "left_outer"
     )
       .select(cols.map(name => col(name)): _*)
+
+
+    var dfPointsLabeledwithNull = metadataCols.get.foldLeft(dfPointsNullRows) {
+      (df, metaColName) =>
+        df.withColumn(metaColName,
+          lit(NOMATCH_IN_POLYGONS))
+    }.drop(col(MAGELLANPOINT_COL))
+
 
     /*
     Below fold left option overrides metadata columns with value 'NoMatch' when there is no match found.
@@ -168,21 +187,7 @@ object JobGeoMapping {
         df.withColumn(metaColName,
           when(col(metaColName).isNull, NOMATCH_IN_POLYGONS)
             .otherwise(col(metaColName)))
-    }
-
-    if (!outPartitions.isEmpty)
-      dfPointsLabeled = dfPointsLabeled.repartition(outPartitions.get)
-
-    //  dfPointLabeledWithUnmatch.show(false)
-
-    if (outPath.isEmpty == false) {
-      dfPointLabeledWithUnmatch.write
-        .mode(SaveMode.Overwrite)
-        .format("com.databricks.spark.csv")
-        .option("delimiter", "\t")
-        .option("header", "false")
-        .csv(outPath.get)
-    }
+    }.union(dfPointsLabeledwithNull)
 
     dfPointLabeledWithUnmatch
   }
@@ -233,7 +238,7 @@ object JobGeoMapping {
 
     for ((dfPolygons, metadataToFilter, index) <- (dfMultiPolygons, metadataColsSeq.get, magellanIndex).zipped.toSeq) {
 
-      val pointsLabeledDf = runJob(inputDf, xColNameIn, yColNameIn, toGPS = toGPSIn, dfPolygons = dfPolygons, metadataCols = Some(metadataToFilter), magellanIndex = index, outPartitions = None, outPath = None)
+      val pointsLabeledDf = runJob(spark, inputDf, xColNameIn, yColNameIn, toGPS = toGPSIn, dfPolygons = dfPolygons, metadataCols = Some(metadataToFilter), magellanIndex = index, outPartitions=outPartitions, outPath = None)
 
       val resultDf: DataFrame = if (aggregateMetadata) {
         consolidateMetadata(pointsLabeledDf, groupByCols, metadataToFilter, METADATA_SEPARATOR, Some(DEFAULT_POLYGONS_METADATA))
@@ -295,6 +300,7 @@ object JobGeoMapping {
     val loadType = opt[String](name = "load-type", required = false, default = Some("singlejoin"))
     val readOption = opt[String](name = "read-option", required = false, default = Some("DF"))
 
+
     validate(magellanIndex, polygonsPath, metadataToFilter) { (index, paths, metadata) =>
       val indexCount = index.split(MAGELLAN_INDEX_SEPARATOR).length
       val pathsCount = paths.split(POLYGONS_PATH_SEPARATOR).length
@@ -346,6 +352,7 @@ object JobGeoMapping {
     val aggregateMetadata = clopts.aggregateMetadata()
     val loadType = clopts.loadType()
     val readOption = clopts.readOption()
+
     // metadataToFilter type is Option[Seq[String]]. Each element is separated by ",".
     // This need to be converted to Seq[Seq[String]]
 
@@ -361,7 +368,6 @@ object JobGeoMapping {
     val spark = getSparkSession("JobGeoMapping")
 
     import spark.implicits._
-
     var dfIn = spark.sparkContext.parallelize(List("10")).toDF()
 
     if (readOption == "DF") {
@@ -408,10 +414,8 @@ object JobGeoMapping {
         val defaultPolygonsDfSeq = CoordinatesUtils.loadDefaultPolygons(spark, defaultPolygonsPath.get, Some(metadataToFilterSeq), magellanIndex)
         polygonsDfSeq = CoordinatesUtils.unionOfPolygonsDf(polygonsDfSeq, defaultPolygonsDfSeq)
       }
-      runMultiPolygonJob(spark, dfIn2, xColName, yColName, toGPS, polygonsDfSeq, "polygon", Some(metadataToFilterSeq), magellanIndex, aggregateMetadata, outPartitions = outPartitions, outPath = Some(outPath))
-
+      runMultiPolygonJob(spark,dfIn2, xColName, yColName, toGPS, polygonsDfSeq, "polygon", Some(metadataToFilterSeq), magellanIndex, aggregateMetadata, outPartitions = outPartitions, outPath = Some(outPath))
     }
-
 
   }
 }
