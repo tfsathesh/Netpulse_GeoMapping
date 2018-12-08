@@ -5,7 +5,7 @@ import org.apache.spark.sql.magellan.dsl.expressions._
 import org.apache.spark.sql.types.StructType
 import org.apache.spark.sql.{Column, DataFrame, SaveMode, SparkSession}
 import org.dmg.pmml.False
-object PolygonsUtils {
+object PolygonsUnionJob {
 
   val NOMATCH_IN_POLYGONS = "NoMatch"
   val NOT_RELATED_COLUMN = "IgnoreColumn"
@@ -81,7 +81,7 @@ object PolygonsUtils {
     * @param outPath           Output path to save results.
     * @return Returns data frame with points labelled.
     */
-  def runPolygonsUnionJob(
+  def runPolygonsUnionJoinJob(
                            spark: SparkSession,
                            dfIn: DataFrame,
                            xColName: String,

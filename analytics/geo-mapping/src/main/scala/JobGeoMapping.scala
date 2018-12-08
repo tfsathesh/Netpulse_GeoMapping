@@ -393,11 +393,10 @@ object JobGeoMapping {
 
     if (loadType != "multijoin") {
       println("*********************************************** SingleJoin Run **********************************" + separator)
-      var polygonsUnionSet = PolygonsUtils.loadPolygonsSet(spark, polygonsPath.get, Some(metadataToFilterSeq), magellanIndex)
+      var polygonsUnionSet = PolygonsUnionJob.loadPolygonsSet(spark, polygonsPath.get, Some(metadataToFilterSeq), magellanIndex)
       println("*********************************************** SingleJoin Run Polygon Schema")
       polygonsUnionSet.printSchema()
-      //******* Need to Handle default polygons Path scenario
-      PolygonsUtils.runPolygonsUnionJob(spark, dfIn2, xColName, yColName, toGPS, polygonsUnionSet, "polygon", Some(metadataToFilterSeq), magellanIndex, aggregateMetadata, outPartitions = outPartitions, outPath = Some(outPath))
+      PolygonsUnionJob.runPolygonsUnionJoinJob(spark, dfIn2, xColName, yColName, toGPS, polygonsUnionSet, "polygon", Some(metadataToFilterSeq), magellanIndex, aggregateMetadata, outPartitions = outPartitions, outPath = Some(outPath))
     }
     else {
       println("*********************************************** MultiJoin Run **********************************" + separator)
@@ -409,9 +408,6 @@ object JobGeoMapping {
         polygonsDfSeq = CoordinatesUtils.unionOfPolygonsDf(polygonsDfSeq, defaultPolygonsDfSeq)
       }
       runMultiPolygonJob(spark, dfIn2, xColName, yColName, toGPS, polygonsDfSeq, "polygon", Some(metadataToFilterSeq), magellanIndex, aggregateMetadata, outPartitions = outPartitions, outPath = Some(outPath))
-
     }
-
-
   }
 }

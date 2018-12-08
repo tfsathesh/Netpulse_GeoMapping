@@ -2,6 +2,7 @@ import com.holdenkarau.spark.testing._
 import org.scalatest.FunSuite
 import org.apache.spark.sql.Row
 import org.apache.spark.sql.types.StructType
+import org.apache.spark.sql.functions.col
 
 class CoordinatesUtilsSuite extends FunSuite with DataFrameSuiteBase {
   override implicit def reuseContextIfPossible: Boolean = true
@@ -11,11 +12,6 @@ class CoordinatesUtilsSuite extends FunSuite with DataFrameSuiteBase {
     val polygonsPath = this.getClass.getClassLoader.getResource("geojson/beacon_gps_sample.geojson").getPath
     val magellanIndex = 10
 
-    val actualDf = CoordinatesUtils.loadPolygons(spark, polygonsPath, None, Some(magellanIndex))
-
-    assert(actualDf.count >= 1)
-    assertTrue(actualDf.columns.toSeq.contains("index"))
-
     val expectedDf = spark.read
       .format("magellan")
       .option("type", "geojson")
@@ -23,13 +19,18 @@ class CoordinatesUtilsSuite extends FunSuite with DataFrameSuiteBase {
       .option("magellan.index.precision", magellanIndex.toString)
       .load(polygonsPath)
 
+    val actualDf = CoordinatesUtils.loadPolygons(spark, polygonsPath, None, Some(magellanIndex))
+
+    assert(actualDf.count >= 1)
+    assertTrue(actualDf.columns.toSeq.contains("index"))
+
     assertDataFrameApproximateEquals(expectedDf, actualDf, 0.005)
   }
 
   test("loadPolygons with metadata and index") {
 
     val polygonsPath = this.getClass.getClassLoader.getResource("geojson/beacon_gps_sample.geojson").getPath
-    val metadataToFilter = Seq("RadioManager", "UID", "Optimiser", "CHUNK", "AREA_OP", "AREA_OWNER")
+    val metadataToFilter = Seq("RadioManager_0", "UID_0", "Optimiser_0", "CHUNK_0", "AREA_OP_0", "AREA_OWNER_0")
     val magellanIndex = 10
 
     val polygonsDf = CoordinatesUtils.loadPolygons(spark, polygonsPath, Some(metadataToFilter), Some(magellanIndex))
@@ -41,7 +42,7 @@ class CoordinatesUtilsSuite extends FunSuite with DataFrameSuiteBase {
 
     // Verify metadata columns data is correct.
     // Get metadata columns
-    val actualDf = polygonsDf.select(metadataToFilter.map(name => polygonsDf.col(name)): _*)
+    var actualDf = polygonsDf.select(metadataToFilter.map(name => polygonsDf.col(name)): _*)
 
     val expectedData = Seq(
       Row("Radio_Mgr1", "120", "Optimiser1", "chunk_1", "Area_Op", "region1"),
@@ -51,7 +52,9 @@ class CoordinatesUtilsSuite extends FunSuite with DataFrameSuiteBase {
     val expectedDF = spark.createDataFrame(
       spark.sparkContext.parallelize(expectedData),
       StructType(actualDf.schema))
+      .sort(metadataToFilter.map(c=> col(c)):_*)
 
+    actualDf = actualDf.sort(metadataToFilter.map(c=> col(c)):_*)
     assertDataFrameEquals(expectedDF, actualDf)
   }
 

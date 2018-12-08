@@ -68,14 +68,19 @@ object CoordinatesUtils {
     var df = dfPartial.load(path)
 
     val metadataCol: String = "metadata"
-
-    def removeIndex(str:String): String = {str.substring(0,str.lastIndexOf("_"))}
+    def removeIndex(str:String): String = {
+      if(str.lastIndexOf("_")>0)
+        str.substring(0,str.lastIndexOf("_"))
+    else
+    str}
 
     if (!metadataToExtract.isEmpty) {
-      val getMetadataValue  = udf((colValue: Map[String, String], str: String) => (colValue: Map[String, String]).getOrElse(removeIndex(str), "-") match { //converted this line to Implicit -- (hash: Map[String, String], key: String) => hash.getOrElse(key, "-")
+      val getMetadataValue  = udf((colValue: Map[String, String], str: String) => (colValue: Map[String, String]).getOrElse(removeIndex(str), "-")
+      match { //converted this line to Implicit -- (hash: Map[String, String], key: String) => hash.getOrElse(key, "-")
         case value if value != null && !value.isEmpty => value
         case _ => "-"
       })
+
       metadataToExtract.get.foreach { key =>
         df = df.withColumn(key, getMetadataValue(col(metadataCol), lit(key)))
       }
@@ -84,7 +89,11 @@ object CoordinatesUtils {
 
     if (!index.isEmpty)
       df = df.withColumn("index", col("polygon") index index.get)
+
+    if(!metadataToExtract.isEmpty)
     df.distinct()
+    else
+      df
   }
 
   implicit class NullOccludingMap[K, V](private val underlying: Map[K, V]) extends AnyVal {
